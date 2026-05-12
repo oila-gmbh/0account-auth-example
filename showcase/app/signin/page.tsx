@@ -52,7 +52,7 @@ const oidcProviders: OidcProvider[] = [
     label: "Go (Goth)",
     description: "Multi-provider OAuth2 library for Go.",
     url: process.env.NEXT_PUBLIC_GO_GOTH_URL
-      ? `${process.env.NEXT_PUBLIC_GO_GOTH_URL}/auth/login`
+      ? `${process.env.NEXT_PUBLIC_GO_GOTH_URL}/auth/login?provider=openidConnect`
       : null,
   },
 ]
@@ -117,7 +117,6 @@ function SignInContent() {
               finalize-uri="/api/auth/widget-finalize"
               scope="openid profile email offline_access"
               with-button
-              style={{ display: "block", width: "100%", maxWidth: "360px" }}
             />
           </div>
         ) : (

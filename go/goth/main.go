@@ -22,15 +22,17 @@ func init() {
 	if redirectURI == "" {
 		redirectURI = "http://localhost:8080/auth/callback"
 	}
-	goth.UseProviders(
-		openidConnect.New(
-			os.Getenv("CLIENT_ID"),
-			os.Getenv("CLIENT_SECRET"),
-			redirectURI,
-			"https://v1.0account.com",
-			"openid", "profile", "email", "offline_access",
-		),
+	provider, err := openidConnect.New(
+		os.Getenv("CLIENT_ID"),
+		os.Getenv("CLIENT_SECRET"),
+		redirectURI,
+		"https://v1.0account.com",
+		"openid", "profile", "email", "offline_access",
 	)
+	if err != nil {
+		panic("goth openidConnect.New: " + err.Error())
+	}
+	goth.UseProviders(provider)
 }
 
 // GET /auth/login?provider=openidConnect

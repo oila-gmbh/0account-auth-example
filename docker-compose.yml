@@ -11,9 +11,13 @@ services:
       context: ./showcase
       # NEXT_PUBLIC_* vars are inlined at build time — pass them as build args.
       args:
-        NEXT_PUBLIC_APP_ID:       ${NEXT_PUBLIC_APP_ID}
-        NEXT_PUBLIC_REDIRECT_URI: ${NEXT_PUBLIC_REDIRECT_URI:-http://localhost:3000/auth/callback}
-        NEXT_PUBLIC_APP_URL:      ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+        NEXT_PUBLIC_APP_ID:            ${NEXT_PUBLIC_APP_ID}
+        NEXT_PUBLIC_REDIRECT_URI:      ${NEXT_PUBLIC_REDIRECT_URI:-http://localhost:3000/auth/callback}
+        NEXT_PUBLIC_APP_URL:           ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+        NEXT_PUBLIC_PASSPORT_URL:      ${NEXT_PUBLIC_PASSPORT_URL:-http://localhost:8081}
+        NEXT_PUBLIC_OPENID_CLIENT_URL: ${NEXT_PUBLIC_OPENID_CLIENT_URL:-http://localhost:8082}
+        NEXT_PUBLIC_GO_OIDC_URL:       ${NEXT_PUBLIC_GO_OIDC_URL:-http://localhost:8083}
+        NEXT_PUBLIC_GO_GOTH_URL:       ${NEXT_PUBLIC_GO_GOTH_URL:-http://localhost:8084}
     ports:
       - "3000:3000"
     # env_file passes values verbatim — no $-interpolation.
@@ -27,8 +31,57 @@ services:
       AUTH_URL: ${APP_URL:-http://localhost:3000}
     restart: unless-stopped
 
-  # ── Backend examples (optional) ──────────────────────────────────────────────
-  # Uncomment whichever you want to run alongside the showcase.
+  # ── Backend examples ─────────────────────────────────────────────────────────
+
+  nodejs-passport:
+    build:
+      context: ./nodejs/passport
+    ports:
+      - "8081:3000"
+    environment:
+      CLIENT_ID: ${CLIENT_ID}
+      CLIENT_SECRET: ${CLIENT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      REDIRECT_URI: http://localhost:8081/auth/callback
+    restart: unless-stopped
+
+  nodejs-openid-client:
+    build:
+      context: ./nodejs/openid-client
+    ports:
+      - "8082:3000"
+    environment:
+      CLIENT_ID: ${CLIENT_ID}
+      CLIENT_SECRET: ${CLIENT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      REDIRECT_URI: http://localhost:8082/auth/callback
+    restart: unless-stopped
+
+  go-go-oidc:
+    build:
+      context: ./go/go-oidc
+    ports:
+      - "8083:8080"
+    environment:
+      CLIENT_ID: ${CLIENT_ID}
+      CLIENT_SECRET: ${CLIENT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      REDIRECT_URI: http://localhost:8083/auth/callback
+    restart: unless-stopped
+
+  go-goth:
+    build:
+      context: ./go/goth
+    ports:
+      - "8084:8080"
+    environment:
+      CLIENT_ID: ${CLIENT_ID}
+      CLIENT_SECRET: ${CLIENT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      REDIRECT_URI: http://localhost:8084/auth/callback
+    restart: unless-stopped
+
+  # ── Optional widget backends ──────────────────────────────────────────────────
 
   # go-widget:
   #   build:

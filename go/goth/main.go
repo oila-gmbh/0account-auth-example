@@ -18,11 +18,15 @@ var appStore = sessions.NewCookieStore([]byte(os.Getenv("SESSION_SECRET")))
 func init() {
 	gothic.Store = sessions.NewCookieStore([]byte(os.Getenv("SESSION_SECRET")))
 
+	redirectURI := os.Getenv("REDIRECT_URI")
+	if redirectURI == "" {
+		redirectURI = "http://localhost:8080/auth/callback"
+	}
 	goth.UseProviders(
 		openidConnect.New(
 			os.Getenv("CLIENT_ID"),
 			os.Getenv("CLIENT_SECRET"),
-			"http://localhost:8080/auth/callback",
+			redirectURI,
 			"https://v1.0account.com",
 			"openid", "profile", "email", "offline_access",
 		),

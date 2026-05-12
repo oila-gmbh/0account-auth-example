@@ -7,6 +7,56 @@ import "@0account/web"
 
 type Tab = "widget" | "oidc"
 
+type OidcProvider = {
+  id: string
+  label: string
+  description: string
+  onClick?: () => void
+  url: string | null
+}
+
+const oidcProviders: OidcProvider[] = [
+  {
+    id: "nextauth",
+    label: "Auth.js (next-auth)",
+    description: "Token refresh, session management out of the box.",
+    onClick: () => signIn("0account", { callbackUrl: "/profile" }),
+    url: null,
+  },
+  {
+    id: "passport",
+    label: "Passport.js",
+    description: "Express + passport-openidconnect strategy.",
+    url: process.env.NEXT_PUBLIC_PASSPORT_URL
+      ? `${process.env.NEXT_PUBLIC_PASSPORT_URL}/auth/login`
+      : null,
+  },
+  {
+    id: "openid-client",
+    label: "openid-client",
+    description: "Low-level OIDC client for Node.js.",
+    url: process.env.NEXT_PUBLIC_OPENID_CLIENT_URL
+      ? `${process.env.NEXT_PUBLIC_OPENID_CLIENT_URL}/auth/login`
+      : null,
+  },
+  {
+    id: "go-oidc",
+    label: "Go (go-oidc)",
+    description: "Minimal OIDC flow in Go with coreos/go-oidc.",
+    url: process.env.NEXT_PUBLIC_GO_OIDC_URL
+      ? `${process.env.NEXT_PUBLIC_GO_OIDC_URL}/auth/login`
+      : null,
+  },
+  {
+    id: "goth",
+    label: "Go (Goth)",
+    description: "Multi-provider OAuth2 library for Go.",
+    url: process.env.NEXT_PUBLIC_GO_GOTH_URL
+      ? `${process.env.NEXT_PUBLIC_GO_GOTH_URL}/auth/login`
+      : null,
+  },
+]
+
 function SignInContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -29,7 +79,7 @@ function SignInContent() {
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md">
+      <div className={`w-full ${activeTab === "oidc" ? "max-w-lg" : "max-w-md"}`}>
         <h1 className="mb-8 text-center text-2xl font-semibold text-zinc-50">
           Sign in
         </h1>
@@ -70,17 +120,36 @@ function SignInContent() {
             />
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-6">
-            <p className="text-center text-sm text-zinc-400">
-              Standard OIDC via Auth.js. Handles redirect, state, PKCE, token
-              refresh, and session automatically.
+          <div className="flex flex-col gap-3">
+            <p className="mb-3 text-center text-sm text-zinc-400">
+              Standard OIDC redirect flow. Choose a backend implementation to
+              see how each handles the auth cycle.
             </p>
-            <button
-              onClick={() => signIn("0account", { callbackUrl: "/profile" })}
-              className="w-full rounded-xl bg-zinc-50 px-6 py-3 font-medium text-zinc-950 transition-colors hover:bg-zinc-200"
-            >
-              Sign in with 0account
-            </button>
+            {oidcProviders.map((provider) => {
+              const disabled = !provider.onClick && !provider.url
+              return (
+                <button
+                  key={provider.id}
+                  disabled={disabled}
+                  title={disabled ? "Run docker-compose to enable" : undefined}
+                  onClick={() => {
+                    if (provider.onClick) {
+                      provider.onClick()
+                    } else if (provider.url) {
+                      window.location.href = provider.url
+                    }
+                  }}
+                  className={`w-full rounded-xl px-6 py-4 text-left transition-colors ${
+                    disabled
+                      ? "cursor-not-allowed bg-zinc-800 opacity-50"
+                      : "bg-zinc-800 hover:bg-zinc-700"
+                  }`}
+                >
+                  <div className="font-medium text-zinc-50">{provider.label}</div>
+                  <div className="mt-0.5 text-sm text-zinc-400">{provider.description}</div>
+                </button>
+              )
+            })}
           </div>
         )}
       </div>

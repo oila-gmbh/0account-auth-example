@@ -31,7 +31,7 @@ passport.use(
       userInfoURL: "https://v1.0account.com/oauth/userinfo",
       clientID: process.env.CLIENT_ID,
       clientSecret: process.env.CLIENT_SECRET,
-      callbackURL: "http://localhost:3000/auth/callback",
+      callbackURL: process.env.REDIRECT_URI || "http://localhost:3000/auth/callback",
       scope: ["openid", "profile", "email", "offline_access"],
       pkce: true, // requires passport-openidconnect v0.1.0+
     },

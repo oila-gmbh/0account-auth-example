@@ -39,10 +39,14 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+	redirectURI := os.Getenv("REDIRECT_URI")
+	if redirectURI == "" {
+		redirectURI = "http://localhost:8080/auth/callback"
+	}
 	oauth2Config = &oauth2.Config{
 		ClientID:     os.Getenv("CLIENT_ID"),
 		ClientSecret: os.Getenv("CLIENT_SECRET"),
-		RedirectURL:  "http://localhost:8080/auth/callback",
+		RedirectURL:  redirectURI,
 		Endpoint:     provider.Endpoint(),
 		// offline_access requests a refresh token
 		Scopes: []string{oidc.ScopeOpenID, "profile", "email", "offline_access"},

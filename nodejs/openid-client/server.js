@@ -19,6 +19,8 @@ app.use(
   }),
 )
 
+const REDIRECT_URI = process.env.REDIRECT_URI || "http://localhost:3000/auth/callback"
+
 let client
 
 async function initClient() {
@@ -26,7 +28,7 @@ async function initClient() {
   client = new issuer.Client({
     client_id: process.env.CLIENT_ID,
     client_secret: process.env.CLIENT_SECRET,
-    redirect_uris: ["http://localhost:3000/auth/callback"],
+    redirect_uris: [REDIRECT_URI],
     response_types: ["code"],
   })
 }
@@ -52,7 +54,7 @@ app.get("/auth/login", (req, res) => {
 app.get("/auth/callback", async (req, res) => {
   try {
     const params = client.callbackParams(req)
-    const tokenSet = await client.callback("http://localhost:3000/auth/callback", params, {
+    const tokenSet = await client.callback(REDIRECT_URI, params, {
       state: req.session.oauthState,
       code_verifier: req.session.pkceVerifier,
     })

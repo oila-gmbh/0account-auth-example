@@ -1,0 +1,22 @@
+# Next.js
+.next/
+out/
+node_modules/
+.npm
+.env
+.env.local
+.env.*.local
+
+# Go
+bin/
+vendor/
+*.test
+
+# Editor
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*

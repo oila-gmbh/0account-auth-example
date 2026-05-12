@@ -1,0 +1,17 @@
+{
+  "name": "0account-passport-example",
+  "version": "1.0.0",
+  "description": "0account OIDC flow — Node.js / Express + Passport.js",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "passport": "^0.7.0",
+    "passport-openidconnect": "^0.1.2"
+  },
+  "engines": { "node": ">=18" }
+}

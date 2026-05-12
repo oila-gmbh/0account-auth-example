@@ -16,12 +16,15 @@ services:
         NEXT_PUBLIC_APP_URL:      ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
     ports:
       - "3000:3000"
+    # env_file passes values verbatim — no $-interpolation.
+    # This is required for AUTH_SECRET, which is an Argon2id hash containing
+    # literal $ characters that Compose would otherwise mis-parse.
+    env_file:
+      - .env
     environment:
-      CLIENT_ID:     ${CLIENT_ID}
-      CLIENT_SECRET: ${CLIENT_SECRET}
-      AUTH_SECRET:   ${AUTH_SECRET}
       # AUTH_URL tells Auth.js the canonical base URL for callback routes.
-      AUTH_URL:      ${APP_URL:-http://localhost:3000}
+      # This is a plain URL so it is safe to interpolate here.
+      AUTH_URL: ${APP_URL:-http://localhost:3000}
     restart: unless-stopped
 
   # ── Backend examples (optional) ──────────────────────────────────────────────

@@ -1,0 +1,48 @@
+# docker-compose.yml
+# Runs the showcase Next.js app.
+#
+# Quick start:
+#   cp .env.example .env   # fill in CLIENT_ID, CLIENT_SECRET, AUTH_SECRET, etc.
+#   docker-compose up --build
+
+services:
+  showcase:
+    build:
+      context: ./showcase
+      # NEXT_PUBLIC_* vars are inlined at build time — pass them as build args.
+      args:
+        NEXT_PUBLIC_APP_ID:       ${NEXT_PUBLIC_APP_ID}
+        NEXT_PUBLIC_REDIRECT_URI: ${NEXT_PUBLIC_REDIRECT_URI:-http://localhost:3000/auth/callback}
+        NEXT_PUBLIC_APP_URL:      ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+    ports:
+      - "3000:3000"
+    environment:
+      CLIENT_ID:     ${CLIENT_ID}
+      CLIENT_SECRET: ${CLIENT_SECRET}
+      AUTH_SECRET:   ${AUTH_SECRET}
+      # AUTH_URL tells Auth.js the canonical base URL for callback routes.
+      AUTH_URL:      ${APP_URL:-http://localhost:3000}
+    restart: unless-stopped
+
+  # ── Backend examples (optional) ──────────────────────────────────────────────
+  # Uncomment whichever you want to run alongside the showcase.
+
+  # go-widget:
+  #   build:
+  #     context: ./go/widget
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     CLIENT_ID:     ${CLIENT_ID}
+  #     CLIENT_SECRET: ${CLIENT_SECRET}
+  #     REDIRECT_URI:  http://localhost:8080/callback
+
+  # nodejs-widget:
+  #   build:
+  #     context: ./nodejs/widget
+  #   ports:
+  #     - "8081:8080"
+  #   environment:
+  #     CLIENT_ID:     ${CLIENT_ID}
+  #     CLIENT_SECRET: ${CLIENT_SECRET}
+  #     REDIRECT_URI:  http://localhost:8081/callback

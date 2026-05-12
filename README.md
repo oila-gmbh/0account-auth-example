@@ -19,7 +19,7 @@ nodejs/
 
 ## Quick start
 
-### Showcase (Next.js)
+### Local (no Docker)
 
 ```bash
 cd showcase
@@ -28,6 +28,17 @@ npm install
 npm run dev
 # → http://localhost:3000
 ```
+
+### Docker (showcase only)
+
+```bash
+cp .env.example .env         # fill in credentials
+docker-compose up --build
+# → http://localhost:3000
+```
+
+The `NEXT_PUBLIC_*` variables are inlined at build time. After changing them,
+rebuild with `docker-compose up --build`.
 
 ### Go examples
 

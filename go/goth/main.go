@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/base64"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/gorilla/sessions"
 	"github.com/markbates/goth"
@@ -14,6 +17,39 @@ import (
 // appStore holds the application session (user info + tokens).
 // In production, use a persistent session store (e.g. Redis).
 var appStore *sessions.CookieStore
+
+// clientSecretPostTransport rewrites any Basic-Auth token requests to
+// client_secret_post (credentials in POST body). 0account accepts both
+// methods, but golang.org/x/oauth2 auto-detect tries Basic-Auth first;
+// this transport ensures we always use the form-body method.
+type clientSecretPostTransport struct{ base http.RoundTripper }
+
+func (t *clientSecretPostTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	auth := req.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Basic ") && req.Body != nil {
+		encoded := strings.TrimPrefix(auth, "Basic ")
+		decoded, err := base64.StdEncoding.DecodeString(encoded)
+		if err == nil {
+			parts := strings.SplitN(string(decoded), ":", 2)
+			if len(parts) == 2 {
+				clientID, _ := url.QueryUnescape(parts[0])
+				clientSecret, _ := url.QueryUnescape(parts[1])
+
+				body, _ := io.ReadAll(req.Body)
+				vals, _ := url.ParseQuery(string(body))
+				vals.Set("client_id", clientID)
+				vals.Set("client_secret", clientSecret)
+				newBody := vals.Encode()
+
+				req = req.Clone(req.Context())
+				req.Header.Del("Authorization")
+				req.Body = io.NopCloser(strings.NewReader(newBody))
+				req.ContentLength = int64(len(newBody))
+			}
+		}
+	}
+	return t.base.RoundTrip(req)
+}
 
 func main() {
 	sessionSecret := os.Getenv("SESSION_SECRET")
@@ -35,6 +71,16 @@ func main() {
 	if err != nil {
 		panic("goth openidConnect.New: " + err.Error())
 	}
+
+	// The showcase links to ?provider=openidConnect; match that name.
+	provider.SetName("openidConnect")
+
+	// Force client_secret_post so credentials are always sent in the POST
+	// body rather than via HTTP Basic Auth (golang.org/x/oauth2 default).
+	provider.HTTPClient = &http.Client{
+		Transport: &clientSecretPostTransport{base: http.DefaultTransport},
+	}
+
 	goth.UseProviders(provider)
 
 	http.HandleFunc("GET /auth/login", handleLogin)
@@ -50,6 +96,8 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 
 // GET /auth/callback?provider=openidConnect
 func handleCallback(w http.ResponseWriter, r *http.Request) {
+	// Ensure Gothic can find the provider even though the callback URL has no ?provider= param.
+	r = gothic.GetContextWithProvider(r, "openidConnect")
 	user, err := gothic.CompleteUserAuth(w, r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)

@@ -13,7 +13,7 @@ app.use(
     // In production, use a persistent session store (e.g. connect-redis)
     cookie: {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 30 * 24 * 60 * 60 * 1000,
     },
@@ -57,6 +57,12 @@ app.get("/auth/login", passport.authenticate("openidconnect"))
 
 app.get(
   "/auth/callback",
+  (req, res, next) => {
+    if (req.query.error) {
+      console.error("[passport] 0account returned error:", req.query.error, req.query.error_description)
+    }
+    next()
+  },
   passport.authenticate("openidconnect", { failureRedirect: "/" }),
   (req, res) => res.redirect("/dashboard"),
 )

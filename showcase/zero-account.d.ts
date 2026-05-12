@@ -1,5 +1,9 @@
 // JSX type augmentation for the <zero-account> custom element.
-// Placed in a .d.ts file to avoid @typescript-eslint/no-namespace errors in .tsx files.
+// The top-level import makes this a module (not a script), so the
+// declare module block below is treated as an augmentation of the
+// existing "react" module rather than replacing it entirely.
+import type React from "react"
+
 declare module "react" {
   namespace JSX {
     interface IntrinsicElements {

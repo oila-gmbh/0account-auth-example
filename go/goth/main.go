@@ -13,10 +13,12 @@ import (
 
 // appStore holds the application session (user info + tokens).
 // In production, use a persistent session store (e.g. Redis).
-var appStore = sessions.NewCookieStore([]byte(os.Getenv("SESSION_SECRET")))
+var appStore *sessions.CookieStore
 
-func init() {
-	gothic.Store = sessions.NewCookieStore([]byte(os.Getenv("SESSION_SECRET")))
+func main() {
+	sessionSecret := os.Getenv("SESSION_SECRET")
+	appStore = sessions.NewCookieStore([]byte(sessionSecret))
+	gothic.Store = sessions.NewCookieStore([]byte(sessionSecret))
 
 	redirectURI := os.Getenv("REDIRECT_URI")
 	if redirectURI == "" {
@@ -26,13 +28,19 @@ func init() {
 		os.Getenv("CLIENT_ID"),
 		os.Getenv("CLIENT_SECRET"),
 		redirectURI,
-		"https://v1.0account.com",
+		// Goth expects the full discovery document URL, not just the issuer.
+		"https://v1.0account.com/.well-known/openid-configuration",
 		"openid", "profile", "email", "offline_access",
 	)
 	if err != nil {
 		panic("goth openidConnect.New: " + err.Error())
 	}
 	goth.UseProviders(provider)
+
+	http.HandleFunc("GET /auth/login", handleLogin)
+	http.HandleFunc("GET /auth/callback", handleCallback)
+	http.HandleFunc("GET /auth/logout", handleLogout)
+	http.ListenAndServe(":8080", nil)
 }
 
 // GET /auth/login?provider=openidConnect
@@ -106,9 +114,4 @@ func refreshTokens(w http.ResponseWriter, r *http.Request) error {
 	return sess.Save(r, w)
 }
 
-func main() {
-	http.HandleFunc("GET /auth/login", handleLogin)
-	http.HandleFunc("GET /auth/callback", handleCallback)
-	http.HandleFunc("GET /auth/logout", handleLogout)
-	http.ListenAndServe(":8080", nil)
-}
+

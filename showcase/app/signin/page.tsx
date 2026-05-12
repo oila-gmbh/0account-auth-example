@@ -109,7 +109,7 @@ function SignInContent() {
             </p>
             <zero-account
               ref={widgetRef}
-              app-id={process.env.NEXT_PUBLIC_APP_ID}
+              app-id={process.env.NEXT_PUBLIC_CLIENT_ID}
               redirect-uri={
                 process.env.NEXT_PUBLIC_REDIRECT_URI ??
                 "http://localhost:3000/auth/callback"
@@ -117,6 +117,7 @@ function SignInContent() {
               finalize-uri="/api/auth/widget-finalize"
               scope="openid profile email offline_access"
               with-button
+              style={{ display: "block", width: "100%", maxWidth: "360px" }}
             />
           </div>
         ) : (

@@ -7,7 +7,7 @@ async function refreshAccessToken(token: Record<string, unknown>) {
     body: new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: token.refreshToken as string,
-      client_id: process.env.CLIENT_ID!,
+      client_id: process.env.NEXT_PUBLIC_CLIENT_ID!,
       client_secret: process.env.CLIENT_SECRET!,
     }),
   })
@@ -29,7 +29,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       name: "0account",
       type: "oidc",
       issuer: "https://v1.0account.com",
-      clientId: process.env.CLIENT_ID,
+      clientId: process.env.NEXT_PUBLIC_CLIENT_ID,
       clientSecret: process.env.CLIENT_SECRET,
       // offline_access requests a refresh token
       authorization: { params: { scope: "openid profile email offline_access" } },

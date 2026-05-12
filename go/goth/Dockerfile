@@ -5,7 +5,8 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o server .
 
-FROM gcr.io/distroless/static-debian12
+FROM alpine:3
+RUN apk add --no-cache ca-certificates
 COPY --from=builder /app/server /server
 EXPOSE 8080
 ENTRYPOINT ["/server"]

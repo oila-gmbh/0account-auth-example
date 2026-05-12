@@ -36,7 +36,7 @@ export default async function ProfilePage() {
 
   async function oidcSignOut() {
     "use server"
-    await signOut({ redirectTo: "/" })
+    await signOut({ redirectTo: "/signin" })
   }
 
   return (

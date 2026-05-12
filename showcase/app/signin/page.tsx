@@ -1,21 +1,26 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { Suspense, useEffect, useRef } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { signIn } from "next-auth/react"
 import "@0account/web"
 
 type Tab = "widget" | "oidc"
 
-export default function SignInPage() {
-  const [activeTab, setActiveTab] = useState<Tab>("widget")
+function SignInContent() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const activeTab: Tab = searchParams.get("flow") === "oidc" ? "oidc" : "widget"
   const widgetRef = useRef<HTMLElement | null>(null)
+
+  const setActiveTab = (tab: Tab) => {
+    router.replace(`/signin?flow=${tab}`, { scroll: false })
+  }
 
   useEffect(() => {
     const el = widgetRef.current
     if (!el) return
     const handler = () => {
-      // The widget has already POSTed to /api/auth/widget-finalize and the
-      // server set the widget_session cookie. Navigate to the profile page.
       window.location.href = "/profile"
     }
     el.addEventListener("0account-authenticated", handler)
@@ -80,5 +85,13 @@ export default function SignInPage() {
         )}
       </div>
     </main>
+  )
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense>
+      <SignInContent />
+    </Suspense>
   )
 }

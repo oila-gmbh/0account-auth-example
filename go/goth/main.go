@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -10,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gorilla/sessions"
 	"github.com/markbates/goth"
@@ -19,7 +19,6 @@ import (
 const (
 	authorizationURL = "https://v1.0account.com/oauth/authorize"
 	tokenURL         = "https://v1.0account.com/oauth/token"
-	userInfoURL      = "https://v1.0account.com/oauth/userinfo"
 	logoutURL        = "https://v1.0account.com/oauth/logout"
 )
 
@@ -57,9 +56,10 @@ func main() {
 	appStore = sessions.NewCookieStore([]byte(sessionSecret))
 	oidcStore = sessions.NewCookieStore([]byte(sessionSecret))
 
-	// Use Goth's openidConnect provider to validate the discovery document on startup.
-	// The auth URL and token exchange use manual PKCE (see handlers below) because
-	// Goth's openidConnect provider does not support PKCE.
+	// Use Goth's openidConnect provider for discovery validation and user fetching.
+	// Auth URL building uses manual PKCE (code_challenge/code_verifier), and token
+	// exchange uses http.PostForm to guarantee client_secret_post auth method.
+	// After token exchange, FetchUser populates the standard goth.User struct.
 	provider, err := openidConnect.New(
 		os.Getenv("CLIENT_ID"),
 		os.Getenv("CLIENT_SECRET"),
@@ -140,6 +140,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		AccessToken  string `json:"access_token"`
 		RefreshToken string `json:"refresh_token"`
 		IDToken      string `json:"id_token"`
+		ExpiresIn    int    `json:"expires_in"`
 	}
 	if err := json.NewDecoder(tokenResp.Body).Decode(&tokens); err != nil || tokens.AccessToken == "" {
 		http.Error(w, "failed to parse token response", http.StatusInternalServerError)
@@ -154,33 +155,34 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Fetch user profile from the userinfo endpoint.
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, userInfoURL, nil)
-	req.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
-	uiResp, err := http.DefaultClient.Do(req)
+	// Use Goth's FetchUser to fetch and map the userinfo claims to a goth.User struct.
+	gothSess := &openidConnect.Session{
+		AccessToken:  tokens.AccessToken,
+		RefreshToken: tokens.RefreshToken,
+		IDToken:      tokens.IDToken,
+		ExpiresAt:    time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second),
+	}
+	provider, err := goth.GetProvider("openid-connect")
 	if err != nil {
-		http.Error(w, "userinfo: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "get provider: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer uiResp.Body.Close()
-
-	var info struct {
-		Sub   string `json:"sub"`
-		Email string `json:"email"`
-		Name  string `json:"name"`
+	user, err := provider.FetchUser(gothSess)
+	if err != nil {
+		http.Error(w, "fetch user: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
-	json.NewDecoder(uiResp.Body).Decode(&info) //nolint:errcheck
 
-	// user.UserID, user.Email, user.Name
+	// user.UserID, user.Email, user.Name, user.FirstName, user.LastName
 	// user.AccessToken, user.RefreshToken, user.IDToken
 	// TODO: upsert user into your database by user.UserID
 
 	appSess, _ := appStore.Get(r, "app")
-	appSess.Values["user_id"] = info.Sub
-	appSess.Values["email"] = info.Email
-	appSess.Values["id_token"] = tokens.IDToken
-	appSess.Values["access_token"] = tokens.AccessToken
-	appSess.Values["refresh_token"] = tokens.RefreshToken
+	appSess.Values["user_id"] = user.UserID
+	appSess.Values["email"] = user.Email
+	appSess.Values["id_token"] = user.IDToken
+	appSess.Values["access_token"] = user.AccessToken
+	appSess.Values["refresh_token"] = user.RefreshToken
 	appSess.Save(r, w) //nolint:errcheck
 
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
@@ -208,28 +210,21 @@ func refreshTokens(w http.ResponseWriter, r *http.Request) error {
 		return http.ErrNoCookie
 	}
 
-	resp, err := http.PostForm(tokenURL, url.Values{
-		"grant_type":    {"refresh_token"},
-		"refresh_token": {refreshToken},
-		"client_id":     {os.Getenv("CLIENT_ID")},
-		"client_secret": {os.Getenv("CLIENT_SECRET")},
-	})
+	provider, err := goth.GetProvider("openid-connect")
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-
-	var tokens struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&tokens); err != nil {
+	resp, err := provider.(*openidConnect.Provider).RefreshTokenWithIDToken(refreshToken)
+	if err != nil {
 		return err
 	}
 
-	sess.Values["access_token"] = tokens.AccessToken
-	if tokens.RefreshToken != "" {
-		sess.Values["refresh_token"] = tokens.RefreshToken
+	sess.Values["access_token"] = resp.AccessToken
+	if resp.RefreshToken != "" {
+		sess.Values["refresh_token"] = resp.RefreshToken
+	}
+	if resp.IdToken != "" {
+		sess.Values["id_token"] = resp.IdToken
 	}
 	return sess.Save(r, w)
 }

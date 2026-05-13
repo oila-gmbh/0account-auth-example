@@ -62,7 +62,13 @@ app.get("/auth/login", (req, res) => {
     code_challenge: challenge,
     code_challenge_method: "S256",
   })
-  res.redirect(`${AUTHORIZATION_URL}?${params}`)
+
+  // Explicitly save before redirecting — avoids a race condition where the
+  // async MemoryStore callback hasn't fired before the browser follows the redirect.
+  req.session.save((err) => {
+    if (err) return res.status(500).send("session error")
+    res.redirect(`${AUTHORIZATION_URL}?${params}`)
+  })
 })
 
 app.get("/auth/callback", async (req, res) => {

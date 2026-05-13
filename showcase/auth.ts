@@ -22,10 +22,28 @@ async function refreshAccessToken(token: Record<string, unknown>) {
   };
 }
 
-const env = process.env;
-for (const key in env) {
-  console.log(`${key}: ${env[key]}`);
-}
+// DEBUG: log the exact token request body so we can see what Auth.js sends
+const _origFetch = globalThis.fetch;
+globalThis.fetch = async function debugFetch(input, init) {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+  if (url.includes('/oauth/token')) {
+    const body = init?.body instanceof URLSearchParams
+      ? init.body.toString()
+      : typeof init?.body === 'string'
+        ? init.body
+        : '(non-string body)';
+    console.log('[AUTH DEBUG] TOKEN REQUEST url:', url);
+    console.log('[AUTH DEBUG] TOKEN REQUEST headers:', JSON.stringify(init?.headers ?? {}));
+    console.log('[AUTH DEBUG] TOKEN REQUEST body:', body);
+  }
+  const res = await _origFetch(input, init);
+  if (url.includes('/oauth/token')) {
+    const clone = res.clone();
+    const text = await clone.text();
+    console.log('[AUTH DEBUG] TOKEN RESPONSE status:', res.status, 'body:', text);
+  }
+  return res;
+} as typeof fetch;
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [

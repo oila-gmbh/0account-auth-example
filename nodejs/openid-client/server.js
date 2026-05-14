@@ -1,6 +1,6 @@
 const express = require("express")
 const session = require("express-session")
-const { Issuer, generators } = require("openid-client")
+const { Issuer, generators, custom } = require("openid-client")
 
 const app = express()
 app.use(express.json())
@@ -30,7 +30,10 @@ async function initClient() {
     client_secret: process.env.CLIENT_SECRET,
     redirect_uris: [REDIRECT_URI],
     response_types: ["code"],
+    id_token_signed_response_alg: "EdDSA",
   })
+  // Allow up to 10 seconds of clock drift between this server and the issuer.
+  client[custom.clock_skew] = 10
 }
 
 app.get("/auth/login", (req, res) => {

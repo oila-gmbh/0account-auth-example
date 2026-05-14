@@ -51,6 +51,21 @@ func redirectURI() string {
 	return "http://localhost:8080/auth/callback"
 }
 
+func handleDashboard(w http.ResponseWriter, r *http.Request) {
+	sess, _ := appStore.Get(r, "app")
+	userID, _ := sess.Values["user_id"].(string)
+	if userID == "" {
+		http.Redirect(w, r, "/auth/login", http.StatusFound)
+		return
+	}
+	email, _ := sess.Values["email"].(string)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
+		"userId": userID,
+		"email":  email,
+	})
+}
+
 func main() {
 	sessionSecret := os.Getenv("SESSION_SECRET")
 	appStore = sessions.NewCookieStore([]byte(sessionSecret))
@@ -75,6 +90,7 @@ func main() {
 	http.HandleFunc("GET /auth/login", handleLogin)
 	http.HandleFunc("GET /auth/callback", handleCallback)
 	http.HandleFunc("GET /auth/logout", handleLogout)
+	http.HandleFunc("GET /dashboard", handleDashboard)
 	http.ListenAndServe(":8080", nil) //nolint:errcheck
 }
 

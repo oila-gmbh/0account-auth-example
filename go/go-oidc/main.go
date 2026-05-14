@@ -4,10 +4,13 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +33,7 @@ type Session struct {
 var (
 	oauth2Config *oauth2.Config
 	verifier     *oidc.IDTokenVerifier
+	secureCookies bool
 	mu           sync.RWMutex
 	sessions     = map[string]*Session{}
 )
@@ -43,6 +47,7 @@ func init() {
 	if redirectURI == "" {
 		redirectURI = "http://localhost:8080/auth/callback"
 	}
+	secureCookies = strings.HasPrefix(redirectURI, "https://")
 	oauth2Config = &oauth2.Config{
 		ClientID:     os.Getenv("CLIENT_ID"),
 		ClientSecret: os.Getenv("CLIENT_SECRET"),
@@ -67,11 +72,13 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 func handleCallback(w http.ResponseWriter, r *http.Request) {
 	stateCookie, err := r.Cookie("state")
 	if err != nil || stateCookie.Value != r.URL.Query().Get("state") {
+		log.Printf("[go-oidc] invalid state: cookie_err=%v url_state=%q cookie_state=%q", err, r.URL.Query().Get("state"), stateCookie.Value)
 		http.Error(w, "invalid state", http.StatusForbidden)
 		return
 	}
 	pkceCookie, err := r.Cookie("pkce")
 	if err != nil {
+		log.Printf("[go-oidc] missing pkce cookie: %v", err)
 		http.Error(w, "missing pkce verifier", http.StatusBadRequest)
 		return
 	}
@@ -82,17 +89,20 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	token, err := oauth2Config.Exchange(r.Context(), r.URL.Query().Get("code"),
 		oauth2.VerifierOption(pkceCookie.Value))
 	if err != nil {
+		log.Printf("[go-oidc] token exchange failed: %v", err)
 		http.Error(w, "token exchange failed", http.StatusUnauthorized)
 		return
 	}
 
 	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok {
+		log.Printf("[go-oidc] missing id_token in token response")
 		http.Error(w, "missing id_token", http.StatusUnauthorized)
 		return
 	}
 	idToken, err := verifier.Verify(r.Context(), rawIDToken)
 	if err != nil {
+		log.Printf("[go-oidc] id_token verification failed: %v", err)
 		http.Error(w, "invalid id_token", http.StatusUnauthorized)
 		return
 	}
@@ -106,6 +116,8 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	idToken.Claims(&claims)
 
 	// TODO: upsert user into your database by claims.Sub
+	log.Printf("[go-oidc] authenticated: sub=%s email=%s token_expiry=%v refresh_token_set=%v",
+		claims.Sub, claims.Email, token.Expiry, token.RefreshToken != "")
 
 	sessID := randomToken()
 	mu.Lock()
@@ -124,16 +136,17 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		Name:     "session",
 		Value:    sessID,
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   secureCookies,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   86400 * 30,
+		Path:     "/",
 	})
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }
 
 func handleLogout(w http.ResponseWriter, r *http.Request) {
 	cookie, _ := r.Cookie("session")
-	http.SetCookie(w, &http.Cookie{Name: "session", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{Name: "session", MaxAge: -1, Path: "/"})
 
 	var idToken string
 	if cookie != nil {
@@ -159,16 +172,23 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 func getSession(r *http.Request) (*Session, error) {
 	cookie, err := r.Cookie("session")
 	if err != nil {
+		log.Printf("[go-oidc] getSession: no session cookie: %v", err)
 		return nil, fmt.Errorf("not authenticated")
 	}
 	mu.RLock()
 	sess := sessions[cookie.Value]
 	mu.RUnlock()
 	if sess == nil {
+		log.Printf("[go-oidc] getSession: session not found for cookie value")
 		return nil, fmt.Errorf("session not found")
 	}
-	if time.Until(sess.Expiry) < 5*time.Minute {
+	// Only proactively refresh when we have a known expiry that is close.
+	// If Expiry is zero (server omitted expires_in), skip refresh — the token
+	// is assumed valid until an API call explicitly returns 401.
+	if !sess.Expiry.IsZero() && time.Until(sess.Expiry) < 5*time.Minute {
+		log.Printf("[go-oidc] getSession: token near expiry (%v), refreshing", sess.Expiry)
 		if err := refreshSession(r.Context(), sess); err != nil {
+			log.Printf("[go-oidc] getSession: refresh failed: %v", err)
 			return nil, fmt.Errorf("token refresh failed: %w", err)
 		}
 	}
@@ -199,7 +219,7 @@ func secureCookie(name, value string, maxAge int) *http.Cookie {
 		Name:     name,
 		Value:    value,
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   secureCookies,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   maxAge,
 	}
@@ -211,9 +231,23 @@ func randomToken() string {
 	return base64.URLEncoding.EncodeToString(b)
 }
 
+func handleDashboard(w http.ResponseWriter, r *http.Request) {
+	sess, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/auth/login", http.StatusFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
+		"userId": sess.UserID,
+		"email":  sess.Email,
+	})
+}
+
 func main() {
 	http.HandleFunc("GET /auth/login", handleLogin)
 	http.HandleFunc("GET /auth/callback", handleCallback)
 	http.HandleFunc("GET /auth/logout", handleLogout)
+	http.HandleFunc("GET /dashboard", handleDashboard)
 	http.ListenAndServe(":8080", nil)
 }

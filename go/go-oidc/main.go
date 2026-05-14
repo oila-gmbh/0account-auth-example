@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -31,12 +32,86 @@ type Session struct {
 }
 
 var (
-	oauth2Config *oauth2.Config
-	verifier     *oidc.IDTokenVerifier
+	oauth2Config  *oauth2.Config
+	verifier      *oidc.IDTokenVerifier
 	secureCookies bool
-	mu           sync.RWMutex
-	sessions     = map[string]*Session{}
+	mu            sync.RWMutex
+	sessions      = map[string]*Session{}
+	jwksOnce      sync.Once
+	logoutPubKey  ed25519.PublicKey
 )
+
+// jwkItem is the minimal JWKS representation needed to extract an Ed25519 key.
+type jwkItem struct {
+	Kty string `json:"kty"`
+	Crv string `json:"crv"`
+	X   string `json:"x"`
+}
+
+// getLogoutKey fetches the issuer's Ed25519 public key from JWKS (cached).
+func getLogoutKey() ed25519.PublicKey {
+	jwksOnce.Do(func() {
+		resp, err := http.Get("https://v1.0account.com/.well-known/jwks.json")
+		if err != nil {
+			log.Printf("[go-oidc] getLogoutKey: JWKS fetch failed: %v", err)
+			return
+		}
+		defer resp.Body.Close()
+		var set struct {
+			Keys []jwkItem `json:"keys"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&set); err != nil {
+			log.Printf("[go-oidc] getLogoutKey: JWKS decode failed: %v", err)
+			return
+		}
+		for _, k := range set.Keys {
+			if k.Kty == "OKP" && k.Crv == "Ed25519" {
+				raw, err := base64.RawURLEncoding.DecodeString(k.X)
+				if err == nil && len(raw) == ed25519.PublicKeySize {
+					logoutPubKey = ed25519.PublicKey(raw)
+					return
+				}
+			}
+		}
+		log.Printf("[go-oidc] getLogoutKey: no Ed25519 key found in JWKS")
+	})
+	return logoutPubKey
+}
+
+// parseLogoutToken verifies the EdDSA signature of a back-channel logout JWT
+// and returns the sub claim.
+func parseLogoutToken(rawToken string) (string, error) {
+	parts := strings.SplitN(rawToken, ".", 3)
+	if len(parts) != 3 {
+		return "", fmt.Errorf("malformed JWT")
+	}
+	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		return "", fmt.Errorf("invalid signature encoding")
+	}
+	key := getLogoutKey()
+	if key == nil {
+		return "", fmt.Errorf("logout key unavailable")
+	}
+	if !ed25519.Verify(key, []byte(parts[0]+"."+parts[1]), sig) {
+		return "", fmt.Errorf("invalid signature")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", fmt.Errorf("invalid payload encoding")
+	}
+	var claims struct {
+		Sub    string         `json:"sub"`
+		Events map[string]any `json:"events"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.Sub == "" {
+		return "", fmt.Errorf("invalid claims")
+	}
+	if _, ok := claims.Events["http://schemas.openid.net/event/backchannel-logout"]; !ok {
+		return "", fmt.Errorf("missing backchannel-logout event")
+	}
+	return claims.Sub, nil
+}
 
 func init() {
 	provider, err := oidc.NewProvider(context.Background(), "https://v1.0account.com")
@@ -231,23 +306,63 @@ func randomToken() string {
 	return base64.URLEncoding.EncodeToString(b)
 }
 
+func handleHome(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, `<!DOCTYPE html><html><head><title>go-oidc example</title></head><body>
+<h1>0account go-oidc example</h1>
+<p><a href="/auth/login">Sign in</a></p>
+</body></html>`)
+}
+
 func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	sess, err := getSession(r)
 	if err != nil {
 		http.Redirect(w, r, "/auth/login", http.StatusFound)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
-		"userId": sess.UserID,
-		"email":  sess.Email,
-	})
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html><html><head><title>Dashboard</title></head><body>
+<h1>Dashboard</h1>
+<p>Logged in as: <strong>%s</strong> (%s)</p>
+<p><a href="/auth/logout">Sign out</a></p>
+</body></html>`, sess.Name, sess.Email)
+}
+
+// handleBackchannelLogout processes a back-channel logout token from 0account,
+// deleting all server-side sessions that match the revoked subject.
+func handleBackchannelLogout(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	rawToken := r.FormValue("logout_token")
+	if rawToken == "" {
+		http.Error(w, "missing logout_token", http.StatusBadRequest)
+		return
+	}
+	sub, err := parseLogoutToken(rawToken)
+	if err != nil {
+		log.Printf("[go-oidc] backchannel-logout: invalid token: %v", err)
+		http.Error(w, "invalid logout_token", http.StatusBadRequest)
+		return
+	}
+	mu.Lock()
+	for id, sess := range sessions {
+		if sess.UserID == sub {
+			delete(sessions, id)
+		}
+	}
+	mu.Unlock()
+	log.Printf("[go-oidc] backchannel-logout: revoked sessions for sub=%s", sub)
+	w.WriteHeader(http.StatusOK)
 }
 
 func main() {
+	http.HandleFunc("GET /", handleHome)
 	http.HandleFunc("GET /auth/login", handleLogin)
 	http.HandleFunc("GET /auth/callback", handleCallback)
 	http.HandleFunc("GET /auth/logout", handleLogout)
 	http.HandleFunc("GET /dashboard", handleDashboard)
+	http.HandleFunc("POST /auth/backchannel-logout", handleBackchannelLogout)
 	http.ListenAndServe(":8080", nil)
 }

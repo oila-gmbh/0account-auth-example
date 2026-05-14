@@ -2,6 +2,8 @@ import { auth, signOut } from "@/auth"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import SignOutButtons from "../components/SignOutButtons"
+import WidgetSessionWatcher from "../components/WidgetSessionWatcher"
+import { revokedSubs } from "@/app/lib/revokedSubs"
 
 type WidgetSession = {
   sub: string
@@ -27,6 +29,12 @@ export default async function ProfilePage() {
     : null
 
   if (!session && !widgetSession) redirect("/signin")
+
+  // If back-channel logout was received for this widget-flow user, send them
+  // through the logout flow to clear the cookie before continuing.
+  if (widgetSession && revokedSubs.has(widgetSession.sub)) {
+    redirect("/api/auth/widget-logout")
+  }
 
   const isOidc = !!session
   const userName = isOidc ? (session?.user?.name ?? "—") : (widgetSession?.name ?? "—")
@@ -71,6 +79,9 @@ export default async function ProfilePage() {
         </div>
 
         <SignOutButtons isOidc={isOidc} oidcSignOut={oidcSignOut} />
+        {!isOidc && process.env.NEXT_PUBLIC_CLIENT_ID && (
+          <WidgetSessionWatcher appId={process.env.NEXT_PUBLIC_CLIENT_ID} />
+        )}
       </div>
     </main>
   )

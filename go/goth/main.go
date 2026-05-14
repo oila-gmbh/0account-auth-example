@@ -1,14 +1,18 @@
 package main
 
 import (
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/sessions"
@@ -28,6 +32,88 @@ var appStore *sessions.CookieStore
 
 // oidcStore holds the transient OIDC handshake values (state, nonce, verifier).
 var oidcStore *sessions.CookieStore
+
+// revokedSubs tracks subjects whose sessions were revoked via back-channel logout.
+// Cookie-based sessions cannot be directly invalidated, so we check this on each request.
+// In production, use a shared store (e.g. Redis) across all server instances.
+var revokedSubs sync.Map
+
+var (
+	jwksOnce     sync.Once
+	logoutPubKey ed25519.PublicKey
+)
+
+// jwkItem is the minimal JWKS representation needed to extract an Ed25519 key.
+type jwkItem struct {
+	Kty string `json:"kty"`
+	Crv string `json:"crv"`
+	X   string `json:"x"`
+}
+
+// getLogoutKey fetches the issuer's Ed25519 public key from JWKS (cached).
+func getLogoutKey() ed25519.PublicKey {
+	jwksOnce.Do(func() {
+		resp, err := http.Get("https://v1.0account.com/.well-known/jwks.json")
+		if err != nil {
+			log.Printf("[goth] getLogoutKey: JWKS fetch failed: %v", err)
+			return
+		}
+		defer resp.Body.Close()
+		var set struct {
+			Keys []jwkItem `json:"keys"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&set); err != nil {
+			log.Printf("[goth] getLogoutKey: JWKS decode failed: %v", err)
+			return
+		}
+		for _, k := range set.Keys {
+			if k.Kty == "OKP" && k.Crv == "Ed25519" {
+				raw, err := base64.RawURLEncoding.DecodeString(k.X)
+				if err == nil && len(raw) == ed25519.PublicKeySize {
+					logoutPubKey = ed25519.PublicKey(raw)
+					return
+				}
+			}
+		}
+		log.Printf("[goth] getLogoutKey: no Ed25519 key found in JWKS")
+	})
+	return logoutPubKey
+}
+
+// parseLogoutToken verifies the EdDSA signature of a back-channel logout JWT
+// and returns the sub claim.
+func parseLogoutToken(rawToken string) (string, error) {
+	parts := strings.SplitN(rawToken, ".", 3)
+	if len(parts) != 3 {
+		return "", fmt.Errorf("malformed JWT")
+	}
+	sig, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		return "", fmt.Errorf("invalid signature encoding")
+	}
+	key := getLogoutKey()
+	if key == nil {
+		return "", fmt.Errorf("logout key unavailable")
+	}
+	if !ed25519.Verify(key, []byte(parts[0]+"."+parts[1]), sig) {
+		return "", fmt.Errorf("invalid signature")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", fmt.Errorf("invalid payload encoding")
+	}
+	var claims struct {
+		Sub    string         `json:"sub"`
+		Events map[string]any `json:"events"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.Sub == "" {
+		return "", fmt.Errorf("invalid claims")
+	}
+	if _, ok := claims.Events["http://schemas.openid.net/event/backchannel-logout"]; !ok {
+		return "", fmt.Errorf("missing backchannel-logout event")
+	}
+	return claims.Sub, nil
+}
 
 func randomBase64URL(n int) string {
 	b := make([]byte, n)
@@ -51,6 +137,14 @@ func redirectURI() string {
 	return "http://localhost:8080/auth/callback"
 }
 
+func handleHome(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, `<!DOCTYPE html><html><head><title>goth example</title></head><body>
+<h1>0account goth example</h1>
+<p><a href="/auth/login">Sign in</a></p>
+</body></html>`)
+}
+
 func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	sess, _ := appStore.Get(r, "app")
 	userID, _ := sess.Values["user_id"].(string)
@@ -58,12 +152,43 @@ func handleDashboard(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/auth/login", http.StatusFound)
 		return
 	}
+	if _, revoked := revokedSubs.Load(userID); revoked {
+		// Back-channel logout was received; clear the cookie and force re-login.
+		sess.Options.MaxAge = -1
+		sess.Save(r, w) //nolint:errcheck
+		http.Redirect(w, r, "/auth/login", http.StatusFound)
+		return
+	}
 	email, _ := sess.Values["email"].(string)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
-		"userId": userID,
-		"email":  email,
-	})
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html><html><head><title>Dashboard</title></head><body>
+<h1>Dashboard</h1>
+<p>Logged in as: <strong>%s</strong></p>
+<p><a href="/auth/logout">Sign out</a></p>
+</body></html>`, email)
+}
+
+// handleBackchannelLogout processes a back-channel logout token from 0account,
+// marking the subject as revoked so future protected requests are rejected.
+func handleBackchannelLogout(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	rawToken := r.FormValue("logout_token")
+	if rawToken == "" {
+		http.Error(w, "missing logout_token", http.StatusBadRequest)
+		return
+	}
+	sub, err := parseLogoutToken(rawToken)
+	if err != nil {
+		log.Printf("[goth] backchannel-logout: invalid token: %v", err)
+		http.Error(w, "invalid logout_token", http.StatusBadRequest)
+		return
+	}
+	revokedSubs.Store(sub, struct{}{})
+	log.Printf("[goth] backchannel-logout: revoked sub=%s", sub)
+	w.WriteHeader(http.StatusOK)
 }
 
 func main() {
@@ -87,10 +212,12 @@ func main() {
 	}
 	goth.UseProviders(provider)
 
+	http.HandleFunc("GET /", handleHome)
 	http.HandleFunc("GET /auth/login", handleLogin)
 	http.HandleFunc("GET /auth/callback", handleCallback)
 	http.HandleFunc("GET /auth/logout", handleLogout)
 	http.HandleFunc("GET /dashboard", handleDashboard)
+	http.HandleFunc("POST /auth/backchannel-logout", handleBackchannelLogout)
 	http.ListenAndServe(":8080", nil) //nolint:errcheck
 }
 
@@ -200,6 +327,9 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	appSess.Values["access_token"] = user.AccessToken
 	appSess.Values["refresh_token"] = user.RefreshToken
 	appSess.Save(r, w) //nolint:errcheck
+
+	// Clear any previously revoked entry for this subject on fresh login.
+	revokedSubs.Delete(user.UserID)
 
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }

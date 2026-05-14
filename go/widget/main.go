@@ -177,7 +177,7 @@ func main() {
 	store = session.New(session.Config{
 		Expiration:     30 * 24 * time.Hour,
 		CookieHTTPOnly: true,
-		CookieSecure:   true,
+		CookieSecure:   os.Getenv("SECURE_COOKIES") == "true",
 		CookieSameSite: "Lax",
 	})
 

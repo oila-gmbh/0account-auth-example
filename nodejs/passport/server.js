@@ -25,6 +25,7 @@ app.use(
     },
   }),
 )
+app.use(express.urlencoded({ extended: false }))
 app.use(passport.initialize())
 app.use(passport.session())
 
@@ -39,6 +40,35 @@ function generateCodeVerifier() {
 }
 function generateCodeChallenge(verifier) {
   return crypto.createHash("sha256").update(verifier).digest("base64url")
+}
+
+// revokedSubs tracks subjects whose sessions were revoked via back-channel logout.
+// In production, use a shared store (e.g. Redis) across all server instances.
+const revokedSubs = new Set()
+
+let _jwksKey = null
+async function getLogoutKey() {
+  if (_jwksKey) return _jwksKey
+  const res = await fetch("https://v1.0account.com/.well-known/jwks.json")
+  const { keys } = await res.json()
+  const k = keys.find((k) => k.kty === "OKP" && k.crv === "Ed25519")
+  if (!k) throw new Error("Ed25519 key not found in JWKS")
+  _jwksKey = crypto.createPublicKey({ key: k, format: "jwk" })
+  return _jwksKey
+}
+
+async function verifyLogoutToken(rawToken) {
+  const parts = rawToken.split(".")
+  if (parts.length !== 3) throw new Error("malformed JWT")
+  const sig = Buffer.from(parts[2], "base64url")
+  const pubKey = await getLogoutKey()
+  const valid = crypto.verify(null, Buffer.from(`${parts[0]}.${parts[1]}`), pubKey, sig)
+  if (!valid) throw new Error("invalid signature")
+  const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString())
+  if (!claims.sub) throw new Error("missing sub")
+  if (!claims.events?.["http://schemas.openid.net/event/backchannel-logout"])
+    throw new Error("missing backchannel-logout event")
+  return claims.sub
 }
 
 app.get("/auth/login", (req, res) => {
@@ -133,6 +163,8 @@ app.get("/auth/callback", async (req, res) => {
     // req.login() uses Passport's session serialization to persist the user.
     req.login(user, (err) => {
       if (err) return res.status(500).send("session error")
+      // Clear any previously revoked entry for this subject on fresh login.
+      revokedSubs.delete(user.id)
       res.redirect("/dashboard")
     })
   } catch (err) {
@@ -179,7 +211,37 @@ async function refreshAccessToken(refreshToken) {
 // Protected route example
 app.get("/dashboard", (req, res) => {
   if (!req.isAuthenticated()) return res.redirect("/auth/login")
-  res.json({ userId: req.user.id, email: req.user.email })
+  if (revokedSubs.has(req.user.id)) {
+    return req.session.destroy(() => res.redirect("/auth/login"))
+  }
+  res.type("html").send(`<!DOCTYPE html><html><head><title>Dashboard</title></head><body>
+<h1>Dashboard</h1>
+<p>Logged in as: <strong>${req.user.email || req.user.id}</strong></p>
+<p><a href="/auth/logout">Sign out</a></p>
+</body></html>`)
+})
+
+// Back-channel logout endpoint — called by 0account when the user logs out elsewhere.
+// Register this URI as backchannel_logout_uri in your 0account app settings.
+app.post("/auth/backchannel-logout", async (req, res) => {
+  const rawToken = req.body?.logout_token
+  if (!rawToken) return res.status(400).send("missing logout_token")
+  try {
+    const sub = await verifyLogoutToken(rawToken)
+    revokedSubs.add(sub)
+    console.log("[passport] backchannel-logout: revoked sub=%s", sub)
+    res.sendStatus(200)
+  } catch (err) {
+    console.error("[passport] backchannel-logout: invalid token:", err.message)
+    res.status(400).send("invalid logout_token")
+  }
+})
+
+app.get("/", (req, res) => {
+  res.type("html").send(`<!DOCTYPE html><html><head><title>passport example</title></head><body>
+<h1>0account passport example</h1>
+<p><a href="/auth/login">Sign in</a></p>
+</body></html>`)
 })
 
 app.listen(3000, () => console.log("Server running on http://localhost:3000"))

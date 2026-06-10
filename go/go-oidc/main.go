@@ -39,7 +39,16 @@ var (
 	sessions      = map[string]*Session{}
 	jwksOnce      sync.Once
 	logoutPubKey  ed25519.PublicKey
+	appOrigin     = getEnv("APP_ORIGIN", "http://localhost:3000")
+	selfURL       = getEnv("SELF_URL", "http://localhost:8083")
 )
+
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
 
 // jwkItem is the minimal JWKS representation needed to extract an Ed25519 key.
 type jwkItem struct {
@@ -216,8 +225,23 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   86400 * 30,
 		Path:     "/",
 	})
-	http.Redirect(w, r, "/dashboard", http.StatusFound)
+	http.Redirect(w, r, appOrigin+"/profile?url="+url.QueryEscape(selfURL), http.StatusFound)
 }
+
+const dashboardHTML = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard — go-oidc</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#09090b;color:#fafafa;min-height:100vh;display:flex;align-items:center;justify-content:center}.card{background:#18181b;border:1px solid #27272a;border-radius:16px;padding:32px;width:360px}h1{font-size:1.125rem;font-weight:600;margin-bottom:20px}.row{display:flex;justify-content:space-between;gap:12px;background:#27272a66;border-radius:8px;padding:8px 12px;margin-bottom:8px}.label{font-size:.75rem;color:#a1a1aa;white-space:nowrap}.value{font-family:'SF Mono',monospace;font-size:.75rem;color:#e4e4e7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px}.btn{display:block;margin-top:20px;padding:10px 16px;border:1px solid #3f3f46;background:transparent;color:#a1a1aa;border-radius:10px;font-size:.875rem;text-align:center;text-decoration:none;transition:background .15s}.btn:hover{background:#27272a;color:#e4e4e7}</style>
+</head><body><div class="card">
+<h1>Dashboard</h1>
+<div class="row"><span class="label">User ID</span><span class="value">%s</span></div>
+<div class="row"><span class="label">Email</span><span class="value">%s</span></div>
+<div class="row"><span class="label">Name</span><span class="value">%s</span></div>
+<a href="/auth/logout" class="btn">Sign out</a>
+</div>
+<script>(function(){var t=setInterval(async function(){try{var r=await fetch('/auth/status');if(r.status===401){clearInterval(t);window.location.href='/auth/login';}}catch(e){}},3000);})();</script>
+</body></html>`
 
 func handleLogout(w http.ResponseWriter, r *http.Request) {
 	cookie, _ := r.Cookie("session")
@@ -234,12 +258,15 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if idToken != "" {
-		// Server-to-server: terminate the session on 0account's side without a browser redirect.
 		http.PostForm("https://v1.0account.com/oauth/logout", url.Values{ //nolint:errcheck
 			"id_token_hint": {idToken},
 		})
 	}
-	http.Redirect(w, r, "/", http.StatusFound)
+	returnTo := r.URL.Query().Get("return_to")
+	if returnTo == "" || !strings.HasPrefix(returnTo, appOrigin) {
+		returnTo = "/auth/login"
+	}
+	http.Redirect(w, r, returnTo, http.StatusFound)
 }
 
 // getSession returns the current session, refreshing the access token
@@ -306,26 +333,47 @@ func randomToken() string {
 	return base64.URLEncoding.EncodeToString(b)
 }
 
-func handleHome(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, `<!DOCTYPE html><html><head><title>go-oidc example</title></head><body>
-<h1>0account go-oidc example</h1>
-<p><a href="/auth/login">Sign in</a></p>
-</body></html>`)
-}
-
 func handleDashboard(w http.ResponseWriter, r *http.Request) {
 	sess, err := getSession(r)
 	if err != nil {
 		http.Redirect(w, r, "/auth/login", http.StatusFound)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!DOCTYPE html><html><head><title>Dashboard</title></head><body>
-<h1>Dashboard</h1>
-<p>Logged in as: <strong>%s</strong> (%s)</p>
-<p><a href="/auth/logout">Sign out</a></p>
-</body></html>`, sess.Name, sess.Email)
+	http.Redirect(w, r, appOrigin+"/profile?url="+url.QueryEscape(selfURL), http.StatusFound)
+	_ = sess
+}
+
+func handleMe(w http.ResponseWriter, r *http.Request) {
+	sess, err := getSession(r)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"not authenticated"}`)) //nolint:errcheck
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{ //nolint:errcheck
+		"userId": sess.UserID,
+		"email":  sess.Email,
+		"name":   sess.Name,
+		"integration": map[string]string{
+			"name":     "go-oidc",
+			"language": "Go",
+			"flow":     "oidc",
+			"library":  "coreos/go-oidc",
+			"url":      selfURL,
+		},
+	})
+}
+
+func handleStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := getSession(r); err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":"unauthenticated"}`)) //nolint:errcheck
+		return
+	}
+	w.Write([]byte(`{"ok":true}`)) //nolint:errcheck
 }
 
 // handleBackchannelLogout processes a back-channel logout token from 0account,
@@ -357,12 +405,30 @@ func handleBackchannelLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if origin := r.Header.Get("Origin"); origin == appOrigin {
+			w.Header().Set("Access-Control-Allow-Origin", appOrigin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func main() {
-	http.HandleFunc("GET /", handleHome)
-	http.HandleFunc("GET /auth/login", handleLogin)
-	http.HandleFunc("GET /auth/callback", handleCallback)
-	http.HandleFunc("GET /auth/logout", handleLogout)
-	http.HandleFunc("GET /dashboard", handleDashboard)
-	http.HandleFunc("POST /auth/backchannel-logout", handleBackchannelLogout)
-	http.ListenAndServe(":8080", nil)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /auth/login", handleLogin)
+	mux.HandleFunc("GET /auth/callback", handleCallback)
+	mux.HandleFunc("GET /auth/logout", handleLogout)
+	mux.HandleFunc("GET /auth/status", handleStatus)
+	mux.HandleFunc("GET /auth/me", handleMe)
+	mux.HandleFunc("GET /dashboard", handleDashboard)
+	mux.HandleFunc("POST /auth/backchannel-logout", handleBackchannelLogout)
+	http.ListenAndServe(":8080", corsMiddleware(mux)) //nolint:errcheck
 }

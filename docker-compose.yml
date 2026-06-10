@@ -18,6 +18,8 @@ services:
         NEXT_PUBLIC_OPENID_CLIENT_URL: ${NEXT_PUBLIC_OPENID_CLIENT_URL:-http://localhost:8082}
         NEXT_PUBLIC_GO_OIDC_URL: ${NEXT_PUBLIC_GO_OIDC_URL:-http://localhost:8083}
         NEXT_PUBLIC_GO_GOTH_URL: ${NEXT_PUBLIC_GO_GOTH_URL:-http://localhost:8084}
+        NEXT_PUBLIC_GO_WIDGET_URL: ${NEXT_PUBLIC_GO_WIDGET_URL:-http://localhost:8085}
+        NEXT_PUBLIC_NODEJS_WIDGET_URL: ${NEXT_PUBLIC_NODEJS_WIDGET_URL:-http://localhost:8086}
     ports:
       - '3000:3000'
     # env_file passes values verbatim — no $-interpolation.
@@ -42,7 +44,9 @@ services:
       CLIENT_ID: ${NEXT_PUBLIC_CLIENT_ID}
       CLIENT_SECRET: ${CLIENT_SECRET}
       SESSION_SECRET: ${SESSION_SECRET}
-      REDIRECT_URI: http://localhost:8081/auth/callback
+      REDIRECT_URI: ${PASSPORT_REDIRECT_URI:-http://localhost:8081/auth/callback}
+      APP_ORIGIN: ${APP_URL:-http://localhost:3000}
+      SELF_URL: ${NEXT_PUBLIC_PASSPORT_URL:-http://localhost:8081}
     restart: unless-stopped
 
   nodejs-openid-client:
@@ -54,7 +58,9 @@ services:
       CLIENT_ID: ${NEXT_PUBLIC_CLIENT_ID}
       CLIENT_SECRET: ${CLIENT_SECRET}
       SESSION_SECRET: ${SESSION_SECRET}
-      REDIRECT_URI: http://localhost:8082/auth/callback
+      REDIRECT_URI: ${OPENID_CLIENT_REDIRECT_URI:-http://localhost:8082/auth/callback}
+      APP_ORIGIN: ${APP_URL:-http://localhost:3000}
+      SELF_URL: ${NEXT_PUBLIC_OPENID_CLIENT_URL:-http://localhost:8082}
     restart: unless-stopped
 
   go-go-oidc:
@@ -66,7 +72,9 @@ services:
       CLIENT_ID: ${NEXT_PUBLIC_CLIENT_ID}
       CLIENT_SECRET: ${CLIENT_SECRET}
       SESSION_SECRET: ${SESSION_SECRET}
-      REDIRECT_URI: http://localhost:8083/auth/callback
+      REDIRECT_URI: ${GO_OIDC_REDIRECT_URI:-http://localhost:8083/auth/callback}
+      APP_ORIGIN: ${APP_URL:-http://localhost:3000}
+      SELF_URL: ${NEXT_PUBLIC_GO_OIDC_URL:-http://localhost:8083}
     restart: unless-stopped
 
   go-goth:
@@ -78,27 +86,37 @@ services:
       CLIENT_ID: ${NEXT_PUBLIC_CLIENT_ID}
       CLIENT_SECRET: ${CLIENT_SECRET}
       SESSION_SECRET: ${SESSION_SECRET}
-      REDIRECT_URI: http://localhost:8084/auth/callback
+      REDIRECT_URI: ${GO_GOTH_REDIRECT_URI:-http://localhost:8084/auth/callback}
+      APP_ORIGIN: ${APP_URL:-http://localhost:3000}
+      SELF_URL: ${NEXT_PUBLIC_GO_GOTH_URL:-http://localhost:8084}
     restart: unless-stopped
 
-  # ── Optional widget backends ──────────────────────────────────────────────────
+  # ── Widget backends ──────────────────────────────────────────────────────────
 
-  # go-widget:
-  #   build:
-  #     context: ./go/widget
-  #   ports:
-  #     - "8080:8080"
-  #   environment:
-  #     CLIENT_ID:     ${CLIENT_ID}
-  #     CLIENT_SECRET: ${CLIENT_SECRET}
-  #     REDIRECT_URI:  http://localhost:8080/callback
+  go-widget:
+    build:
+      context: ./go/widget
+    ports:
+      - '8085:8080'
+    environment:
+      CLIENT_ID: ${NEXT_PUBLIC_CLIENT_ID}
+      CLIENT_SECRET: ${CLIENT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      REDIRECT_URI: ${GO_WIDGET_REDIRECT_URI:-http://localhost:8085/}
+      APP_ORIGIN: ${APP_URL:-http://localhost:3000}
+      SELF_URL: ${NEXT_PUBLIC_GO_WIDGET_URL:-http://localhost:8085}
+    restart: unless-stopped
 
-  # nodejs-widget:
-  #   build:
-  #     context: ./nodejs/widget
-  #   ports:
-  #     - "8081:8080"
-  #   environment:
-  #     CLIENT_ID:     ${CLIENT_ID}
-  #     CLIENT_SECRET: ${CLIENT_SECRET}
-  #     REDIRECT_URI:  http://localhost:8081/callback
+  nodejs-widget:
+    build:
+      context: ./nodejs/widget
+    ports:
+      - '8086:3000'
+    environment:
+      CLIENT_ID: ${NEXT_PUBLIC_CLIENT_ID}
+      CLIENT_SECRET: ${CLIENT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
+      REDIRECT_URI: ${NODEJS_WIDGET_REDIRECT_URI:-http://localhost:8086/}
+      APP_ORIGIN: ${APP_URL:-http://localhost:3000}
+      SELF_URL: ${NEXT_PUBLIC_NODEJS_WIDGET_URL:-http://localhost:8086}
+    restart: unless-stopped

@@ -27,7 +27,8 @@ export async function GET(req: NextRequest) {
   }
 
   const origin = req.nextUrl.origin
-  const response = NextResponse.redirect(new URL("/", origin))
+  const response = NextResponse.redirect(new URL("/signin", origin))
   response.cookies.set("widget_session", "", { maxAge: 0, path: "/" })
+  response.cookies.set("_bcl_revoked", "", { maxAge: 0, path: "/" })
   return response
 }

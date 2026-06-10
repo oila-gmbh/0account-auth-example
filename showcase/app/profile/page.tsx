@@ -3,6 +3,8 @@ import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import SignOutButtons from "../components/SignOutButtons"
 import WidgetSessionWatcher from "../components/WidgetSessionWatcher"
+import OidcSessionPoller from "../components/OidcSessionPoller"
+import ExternalProfile from "../components/ExternalProfile"
 import { revokedSubs } from "@/app/lib/revokedSubs"
 
 type WidgetSession = {
@@ -20,7 +22,26 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-export default async function ProfilePage() {
+function Badge({ label, color }: { label: string; color: string }) {
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${color}`}>
+      {label}
+    </span>
+  )
+}
+
+type SearchParams = Promise<Record<string, string | string[] | undefined>>
+
+export default async function ProfilePage({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams
+  const externalUrl = typeof params.url === "string" ? params.url : undefined
+
+  // External backend flow: delegate entirely to the client component
+  if (externalUrl) {
+    return <ExternalProfile backendUrl={externalUrl} />
+  }
+
+  // Showcase-native flows (Auth.js OIDC + showcase widget)
   const [session, cookieStore] = await Promise.all([auth(), cookies()])
 
   const rawCookie = cookieStore.get("widget_session")?.value
@@ -30,17 +51,25 @@ export default async function ProfilePage() {
 
   if (!session && !widgetSession) redirect("/signin")
 
-  // If back-channel logout was received for this widget-flow user, send them
-  // through the logout flow to clear the cookie before continuing.
-  if (widgetSession && revokedSubs.has(widgetSession.sub)) {
+  if (widgetSession && (revokedSubs.has(widgetSession.sub) || cookieStore.get("_bcl_revoked")?.value === "1")) {
     redirect("/api/auth/widget-logout")
+  }
+
+  if (session?.user?.id && revokedSubs.has(session.user.id)) {
+    redirect("/api/auth/oidc-logout")
   }
 
   const isOidc = !!session
   const userName = isOidc ? (session?.user?.name ?? "—") : (widgetSession?.name ?? "—")
   const email = isOidc ? (session?.user?.email ?? "—") : (widgetSession?.email ?? "—")
   const userId = isOidc ? (session?.user?.id ?? "—") : (widgetSession?.sub ?? "—")
-  const flow = isOidc ? "OIDC (Auth.js)" : "Widget Flow"
+
+  const integration = isOidc
+    ? { name: "Auth.js", language: "Next.js", flow: "oidc", library: "next-auth" }
+    : { name: "Showcase Widget", language: "Next.js", flow: "widget", library: "@0account/web" }
+
+  const langColor = "bg-blue-900/50 text-blue-300"
+  const flowColor = isOidc ? "bg-orange-900/50 text-orange-300" : "bg-purple-900/50 text-purple-300"
 
   async function oidcSignOut() {
     "use server"
@@ -62,8 +91,7 @@ export default async function ProfilePage() {
         </div>
 
         {/* Session info */}
-        <div className="mb-6 space-y-2">
-          <InfoRow label="Auth flow" value={flow} />
+        <div className="mb-4 space-y-2">
           <InfoRow label="User ID" value={userId} />
           {isOidc && session?.accessToken && (
             <InfoRow
@@ -78,7 +106,23 @@ export default async function ProfilePage() {
           )}
         </div>
 
+        {/* Integration metadata */}
+        <div className="mb-6 rounded-xl border border-zinc-800 bg-zinc-800/30 p-4 space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium text-zinc-100">{integration.name}</span>
+            <Badge label={integration.language} color={langColor} />
+            <Badge label={integration.flow} color={flowColor} />
+          </div>
+          <div className="space-y-1.5 text-xs">
+            <div className="flex justify-between gap-2">
+              <span className="text-zinc-500">Library</span>
+              <span className="font-mono text-zinc-300">{integration.library}</span>
+            </div>
+          </div>
+        </div>
+
         <SignOutButtons isOidc={isOidc} oidcSignOut={oidcSignOut} />
+        {isOidc && <OidcSessionPoller />}
         {!isOidc && process.env.NEXT_PUBLIC_CLIENT_ID && (
           <WidgetSessionWatcher appId={process.env.NEXT_PUBLIC_CLIENT_ID} />
         )}

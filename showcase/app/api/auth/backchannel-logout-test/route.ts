@@ -32,5 +32,15 @@ export async function GET(req: NextRequest) {
     // malformed cookie — ignore
   }
 
-  return NextResponse.redirect(new URL("/profile", req.nextUrl.origin))
+  // Set a short-lived cookie as a reliable revocation signal. Module-level
+  // state (revokedSubs) is not guaranteed to be shared across all Next.js
+  // workers in dev mode (Turbopack), so the cookie is the authoritative signal.
+  const response = NextResponse.redirect(new URL("/profile", req.nextUrl.origin))
+  response.cookies.set("_bcl_revoked", "1", {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 300,
+  })
+  return response
 }

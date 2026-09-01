@@ -95,8 +95,8 @@ async function verifyLogoutToken(rawToken) {
 async function initClient() {
   const issuer = await Issuer.discover("https://v1.0account.com")
   client = new issuer.Client({
-    client_id: process.env.CLIENT_ID,
-    client_secret: process.env.CLIENT_SECRET,
+    client_id: process.env.ZERO_CLIENT_ID,
+    client_secret: process.env.ZERO_CLIENT_SECRET,
     redirect_uris: [REDIRECT_URI],
     response_types: ["code"],
     id_token_signed_response_alg: "EdDSA",

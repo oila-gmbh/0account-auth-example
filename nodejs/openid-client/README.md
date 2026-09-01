@@ -29,6 +29,6 @@ Register `http://localhost:3000/auth/callback` as a redirect URI in your 0accoun
 
 | Variable | Description |
 |---|---|
-| `CLIENT_ID` | Your OAuth client ID |
-| `CLIENT_SECRET` | Your OAuth client secret |
+| `ZERO_CLIENT_ID` | Your OAuth client ID |
+| `ZERO_CLIENT_SECRET` | Your OAuth client secret |
 | `SESSION_SECRET` | Random secret for session signing |

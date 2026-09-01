@@ -1,46 +1,27 @@
 import type { NextRequest } from "next/server"
 import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
+import { auth } from "@/auth"
 import { revokedSubs } from "@/app/lib/revokedSubs"
 
 /**
  * GET /api/auth/backchannel-logout-test
  *
- * Local simulation of a back-channel logout for demo purposes. In production,
- * 0account calls POST /api/auth/backchannel-logout directly. This endpoint:
- *   1. Reads the current user's sub from the widget_session cookie.
- *   2. Adds that sub to the revokedSubs set.
+ * Simulates what happens when the user ends this session from their phone.
  *
- * The profile page will detect the revocation on the next request and redirect
- * to /api/auth/widget-logout which clears the cookie.
+ * In production 0account POSTs a signed logout token to
+ * /api/auth/backchannel-logout. This endpoint fakes the effect of that call
+ * locally, so the demo can show the consequence without a second device: it
+ * marks the current subject revoked, and the poller notices within seconds.
  */
 export async function GET(req: NextRequest) {
-  const cookieStore = await cookies()
-  const raw = cookieStore.get("widget_session")?.value
+  const session = await auth()
 
-  if (!raw) {
+  if (!session?.user?.id) {
     return NextResponse.redirect(new URL("/signin", req.nextUrl.origin))
   }
 
-  try {
-    const session = JSON.parse(raw) as { sub?: string }
-    if (session.sub) {
-      revokedSubs.add(session.sub)
-      console.log("[backchannel-logout-test] simulated revocation for sub=%s", session.sub)
-    }
-  } catch {
-    // malformed cookie — ignore
-  }
+  revokedSubs.add(session.user.id)
+  console.log("[backchannel-logout-test] simulated revocation for sub=%s", session.user.id)
 
-  // Set a short-lived cookie as a reliable revocation signal. Module-level
-  // state (revokedSubs) is not guaranteed to be shared across all Next.js
-  // workers in dev mode (Turbopack), so the cookie is the authoritative signal.
-  const response = NextResponse.redirect(new URL("/profile", req.nextUrl.origin))
-  response.cookies.set("_bcl_revoked", "1", {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 300,
-  })
-  return response
+  return NextResponse.redirect(new URL("/profile", req.nextUrl.origin))
 }

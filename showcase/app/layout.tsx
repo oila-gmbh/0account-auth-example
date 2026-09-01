@@ -4,7 +4,7 @@ import Footer from './components/Footer';
 
 export const metadata: Metadata = {
   title: '0account Auth Example',
-  description: 'Showcase of 0account authentication flows — widget and OIDC.',
+  description: 'Showcase of signing in with 0account over OpenID Connect.',
 };
 
 export default function RootLayout({

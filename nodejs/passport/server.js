@@ -123,7 +123,7 @@ app.get("/auth/login", (req, res) => {
 
   const params = new URLSearchParams({
     response_type: "code",
-    client_id: process.env.CLIENT_ID,
+    client_id: process.env.ZERO_CLIENT_ID,
     redirect_uri: process.env.REDIRECT_URI || "http://localhost:3000/auth/callback",
     scope: "openid profile email offline_access",
     state,
@@ -163,8 +163,8 @@ app.get("/auth/callback", async (req, res) => {
         grant_type: "authorization_code",
         code,
         redirect_uri: redirectUri,
-        client_id: process.env.CLIENT_ID,
-        client_secret: process.env.CLIENT_SECRET,
+        client_id: process.env.ZERO_CLIENT_ID,
+        client_secret: process.env.ZERO_CLIENT_SECRET,
         code_verifier: verifier,
       }),
     })
@@ -241,8 +241,8 @@ async function refreshAccessToken(refreshToken) {
     body: new URLSearchParams({
       grant_type: "refresh_token",
       refresh_token: refreshToken,
-      client_id: process.env.CLIENT_ID,
-      client_secret: process.env.CLIENT_SECRET,
+      client_id: process.env.ZERO_CLIENT_ID,
+      client_secret: process.env.ZERO_CLIENT_SECRET,
     }),
   })
   if (!response.ok) throw new Error("refresh failed")

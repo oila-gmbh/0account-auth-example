@@ -1,8 +1,7 @@
 'use client';
 
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { signIn } from 'next-auth/react';
-import '@0account/web';
 
 // ─── Badge helpers ────────────────────────────────────────────────────────────
 
@@ -18,10 +17,8 @@ function LangBadge({ lang }: { lang: string }) {
   );
 }
 
-function FlowBadge({ flow }: { flow: 'widget' | 'oidc' }) {
-  const color = flow === 'widget'
-    ? 'bg-purple-900/50 text-purple-300'
-    : 'bg-orange-900/50 text-orange-300';
+function FlowBadge({ flow }: { flow: 'oidc' }) {
+  const color = 'bg-violet-500/10 text-violet-300 ring-violet-500/20';
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${color}`}>
       {flow}
@@ -61,7 +58,7 @@ type IntegrationCardProps = {
   name: string;
   library: string;
   lang: string;
-  flow: 'widget' | 'oidc';
+  flow: 'oidc';
   url?: string | null;
   debugUrls?: Record<string, string>;
   onClick?: () => void;
@@ -144,32 +141,7 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle: string })
 // ─── Main component ───────────────────────────────────────────────────────────
 
 function SignInContent() {
-  const widgetRef = useRef<HTMLElement | null>(null);
-  const [moreBackendsOpen, setMoreBackendsOpen] = useState(false);
-
-  useEffect(() => {
-    const el = widgetRef.current;
-    if (!el) return;
-    const handler = () => { window.location.href = '/profile'; };
-    el.addEventListener('0account-authenticated', handler);
-    return () => el.removeEventListener('0account-authenticated', handler);
-  }, []);
-
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
-  const goWidgetUrl = process.env.NEXT_PUBLIC_GO_WIDGET_URL;
-  const nodejsWidgetUrl = process.env.NEXT_PUBLIC_NODEJS_WIDGET_URL;
-  const extraWidgetBackends = [
-    goWidgetUrl && {
-      name: 'Go Widget', library: '@0account/web (Fiber)', lang: 'Go',
-      url: `${goWidgetUrl}/`,
-      debugUrls: { 'Backend URL': goWidgetUrl, 'Finalize URI': `${goWidgetUrl}/auth/finalize` },
-    },
-    nodejsWidgetUrl && {
-      name: 'Node.js Widget', library: '@0account/web (Express)', lang: 'Node.js',
-      url: `${nodejsWidgetUrl}/`,
-      debugUrls: { 'Backend URL': nodejsWidgetUrl, 'Finalize URI': `${nodejsWidgetUrl}/auth/finalize` },
-    },
-  ].filter(Boolean) as { name: string; library: string; lang: string; url: string; debugUrls: Record<string, string> }[];
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-4 py-12">
@@ -178,73 +150,9 @@ function SignInContent() {
           Sign in
         </h1>
 
-        {/* ── Widget Flow ── */}
-        <section className="mb-8">
-          <SectionHeader
-            title="Widget Flow"
-            subtitle="The widget handles PKCE, QR code, and the SSE session handshake."
-          />
-          <div className="flex flex-col gap-2">
-            {/* Showcase Widget — always rendered */}
-            <IntegrationCard
-              name="Showcase Widget"
-              library="@0account/web"
-              lang="Next.js"
-              flow="widget"
-              debugUrls={{
-                'Redirect URI': process.env.NEXT_PUBLIC_REDIRECT_URI ?? `${appUrl}/auth/callback`,
-                'Finalize URI': `${appUrl}/api/auth/widget-finalize`,
-              }}
-            >
-              <div className="flex justify-center py-1">
-                <zero-account
-                  ref={widgetRef}
-                  app-id={process.env.NEXT_PUBLIC_CLIENT_ID}
-                  redirect-uri={
-                    process.env.NEXT_PUBLIC_REDIRECT_URI ??
-                    `${appUrl}/auth/callback`
-                  }
-                  finalize-uri="/api/auth/widget-finalize"
-                  scope="openid profile email offline_access"
-                  with-button
-                />
-              </div>
-            </IntegrationCard>
-
-            {/* Additional widget backends — only shown if at least one is configured */}
-            {extraWidgetBackends.length > 0 && (
-              <div className="mt-1">
-                <button
-                  onClick={() => setMoreBackendsOpen(v => !v)}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-                >
-                  <span>{moreBackendsOpen ? '▲' : '▼'}</span>
-                  <span>More widget backends ({extraWidgetBackends.length})</span>
-                </button>
-                {moreBackendsOpen && (
-                  <div className="flex flex-col gap-2 mt-1">
-                    {extraWidgetBackends.map((b) => (
-                      <IntegrationCard
-                        key={b.name}
-                        name={b.name}
-                        library={b.library}
-                        lang={b.lang}
-                        flow="widget"
-                        url={b.url}
-                        debugUrls={b.debugUrls}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* ── OIDC Flow ── */}
         <section>
           <SectionHeader
-            title="OIDC Flow"
+            title="OIDC"
             subtitle="Standard redirect flow — each backend handles code exchange server-side."
           />
           <div className="flex flex-col gap-2">

@@ -44,7 +44,6 @@ const LANGUAGE_COLORS: Record<string, string> = {
 }
 
 const FLOW_COLORS: Record<string, string> = {
-  widget: "bg-purple-900/50 text-purple-300",
   oidc: "bg-orange-900/50 text-orange-300",
 }
 

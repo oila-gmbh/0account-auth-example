@@ -273,8 +273,8 @@ func main() {
 	// exchange uses http.PostForm to guarantee client_secret_post auth method.
 	// After token exchange, FetchUser populates the standard goth.User struct.
 	provider, err := openidConnect.New(
-		os.Getenv("CLIENT_ID"),
-		os.Getenv("CLIENT_SECRET"),
+		os.Getenv("ZERO_CLIENT_ID"),
+		os.Getenv("ZERO_CLIENT_SECRET"),
 		redirectURI(),
 		"https://v1.0account.com/.well-known/openid-configuration",
 		"openid", "profile", "email", "offline_access",
@@ -310,7 +310,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	params := url.Values{
 		"response_type":         {"code"},
-		"client_id":             {os.Getenv("CLIENT_ID")},
+		"client_id":             {os.Getenv("ZERO_CLIENT_ID")},
 		"redirect_uri":          {redirectURI()},
 		"scope":                 {"openid profile email offline_access"},
 		"state":                 {state},
@@ -343,8 +343,8 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		"grant_type":    {"authorization_code"},
 		"code":          {r.URL.Query().Get("code")},
 		"redirect_uri":  {redirectURI()},
-		"client_id":     {os.Getenv("CLIENT_ID")},
-		"client_secret": {os.Getenv("CLIENT_SECRET")},
+		"client_id":     {os.Getenv("ZERO_CLIENT_ID")},
+		"client_secret": {os.Getenv("ZERO_CLIENT_SECRET")},
 		"code_verifier": {verifier},
 	})
 	if err != nil {

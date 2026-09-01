@@ -2,16 +2,9 @@ import { auth, signOut } from "@/auth"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import SignOutButtons from "../components/SignOutButtons"
-import WidgetSessionWatcher from "../components/WidgetSessionWatcher"
 import OidcSessionPoller from "../components/OidcSessionPoller"
 import ExternalProfile from "../components/ExternalProfile"
 import { revokedSubs } from "@/app/lib/revokedSubs"
-
-type WidgetSession = {
-  sub: string
-  email: string
-  name: string
-}
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
@@ -41,35 +34,25 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
     return <ExternalProfile backendUrl={externalUrl} />
   }
 
-  // Showcase-native flows (Auth.js OIDC + showcase widget)
+  // Showcase-native flow (Auth.js OIDC)
   const [session, cookieStore] = await Promise.all([auth(), cookies()])
 
-  const rawCookie = cookieStore.get("widget_session")?.value
-  const widgetSession: WidgetSession | null = rawCookie
-    ? (JSON.parse(rawCookie) as WidgetSession)
-    : null
 
-  if (!session && !widgetSession) redirect("/signin")
+  if (!session) redirect("/signin")
 
-  if (widgetSession && (revokedSubs.has(widgetSession.sub) || cookieStore.get("_bcl_revoked")?.value === "1")) {
-    redirect("/api/auth/widget-logout")
-  }
 
   if (session?.user?.id && revokedSubs.has(session.user.id)) {
     redirect("/api/auth/oidc-logout")
   }
 
-  const isOidc = !!session
-  const userName = isOidc ? (session?.user?.name ?? "—") : (widgetSession?.name ?? "—")
-  const email = isOidc ? (session?.user?.email ?? "—") : (widgetSession?.email ?? "—")
-  const userId = isOidc ? (session?.user?.id ?? "—") : (widgetSession?.sub ?? "—")
+  const userName = session?.user?.name ?? "—"
+  const email = session?.user?.email ?? "—"
+  const userId = session?.user?.id ?? "—"
 
-  const integration = isOidc
-    ? { name: "Auth.js", language: "Next.js", flow: "oidc", library: "next-auth" }
-    : { name: "Showcase Widget", language: "Next.js", flow: "widget", library: "@0account/web" }
+  const integration = { name: "Auth.js", language: "Next.js", flow: "oidc", library: "next-auth" }
 
   const langColor = "bg-blue-900/50 text-blue-300"
-  const flowColor = isOidc ? "bg-orange-900/50 text-orange-300" : "bg-purple-900/50 text-purple-300"
+  const flowColor = "bg-orange-900/50 text-orange-300"
 
   async function oidcSignOut() {
     "use server"
@@ -93,13 +76,13 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
         {/* Session info */}
         <div className="mb-4 space-y-2">
           <InfoRow label="User ID" value={userId} />
-          {isOidc && session?.accessToken && (
+          {session?.accessToken && (
             <InfoRow
               label="Access token"
               value={`${session.accessToken.slice(0, 28)}…`}
             />
           )}
-          {isOidc && session?.error === "RefreshAccessTokenError" && (
+          {session?.error === "RefreshAccessTokenError" && (
             <p className="rounded-lg bg-red-950/40 px-3 py-2 text-sm text-red-400">
               Token refresh failed. Please sign in again.
             </p>
@@ -121,11 +104,8 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
           </div>
         </div>
 
-        <SignOutButtons isOidc={isOidc} oidcSignOut={oidcSignOut} />
-        {isOidc && <OidcSessionPoller />}
-        {!isOidc && process.env.NEXT_PUBLIC_CLIENT_ID && (
-          <WidgetSessionWatcher appId={process.env.NEXT_PUBLIC_CLIENT_ID} />
-        )}
+        <SignOutButtons oidcSignOut={oidcSignOut} />
+        <OidcSessionPoller />
       </div>
     </main>
   )

@@ -133,14 +133,14 @@ func init() {
 	}
 	secureCookies = strings.HasPrefix(redirectURI, "https://")
 	oauth2Config = &oauth2.Config{
-		ClientID:     os.Getenv("CLIENT_ID"),
-		ClientSecret: os.Getenv("CLIENT_SECRET"),
+		ClientID:     os.Getenv("ZERO_CLIENT_ID"),
+		ClientSecret: os.Getenv("ZERO_CLIENT_SECRET"),
 		RedirectURL:  redirectURI,
 		Endpoint:     provider.Endpoint(),
 		// offline_access requests a refresh token
 		Scopes: []string{oidc.ScopeOpenID, "profile", "email", "offline_access"},
 	}
-	verifier = provider.Verifier(&oidc.Config{ClientID: os.Getenv("CLIENT_ID")})
+	verifier = provider.Verifier(&oidc.Config{ClientID: os.Getenv("ZERO_CLIENT_ID")})
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {

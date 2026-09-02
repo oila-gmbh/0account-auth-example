@@ -26,6 +26,10 @@ async function refreshAccessToken(token: Record<string, unknown>) {
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  // Required anywhere that is not Vercel. Auth.js will not build callback URLs
+  // from a host it has not been told to trust, and refuses the request with a
+  // bare "Configuration" error that says nothing about the cause.
+  trustHost: true,
   providers: [
     {
       id: '0account',

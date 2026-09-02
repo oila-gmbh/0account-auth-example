@@ -44,10 +44,13 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       authorization: {
         params: { scope: 'openid profile email offline_access' },
       },
-      // Required. Without it Auth.js applies its default mapping, which reads
-      // `name` — a claim we do not send, since userinfo returns given_name and
-      // family_name separately — and invents a UUID for the id rather than
-      // using our sub.
+      // Auth.js's default mapping reads `name`, which we do not send — userinfo
+      // returns given_name and family_name separately — so without this the
+      // profile has no name at all.
+      //
+      // `id` is deliberately not set here. Auth.js v5 overwrites whatever a
+      // provider returns with crypto.randomUUID(), so our subject has to be
+      // carried through the jwt callback instead.
       profile(profile) {
         return {
           id: profile.sub,
@@ -73,11 +76,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
   },
   callbacks: {
-    async jwt({ token, account }) {
+    async jwt({ token, account, profile }) {
       // Persist tokens from the initial sign-in
       if (account) {
         return {
           ...token,
+          // The real subject. Auth.js replaces user.id with a random UUID
+          // before this point, so profile.sub is the only place it survives —
+          // and it is what /userinfo, logout tokens and every other example
+          // identify this person by.
+          zeroSub: profile?.sub ?? token.zeroSub,
           accessToken: account.access_token,
           idToken: account.id_token,
           expiresAt: account.expires_at,
@@ -96,7 +104,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     },
     async session({ session, token }) {
       session.accessToken = token.accessToken as string;
-      if (token.sub) session.user.id = token.sub;
+      // zeroSub, not token.sub: the latter is Auth.js's own generated id.
+      if (token.zeroSub) session.user.id = token.zeroSub as string;
       if (token.error) session.error = token.error as string;
       return session;
     },

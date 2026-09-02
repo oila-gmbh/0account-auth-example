@@ -395,6 +395,13 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	// TODO: upsert user into your database by user.UserID
 
 	appSess, _ := appStore.Get(r, "app")
+
+	// Clear any earlier revocation for this subject. A subject is permanent, so
+	// without this the entry outlives the session it was about: the user signs
+	// in again, arrives with the same subject, and is rejected on the first
+	// protected request -- forever, or until the process restarts.
+	revokedSubs.Delete(user.UserID)
+
 	appSess.Values["user_id"] = user.UserID
 	appSess.Values["email"] = user.Email
 	appSess.Values["name"] = user.Name

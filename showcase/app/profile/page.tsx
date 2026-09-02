@@ -76,12 +76,6 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
         {/* Session info */}
         <div className="mb-4 space-y-2">
           <InfoRow label="User ID" value={userId} />
-          {session?.accessToken && (
-            <InfoRow
-              label="Access token"
-              value={`${session.accessToken.slice(0, 28)}…`}
-            />
-          )}
           {session?.error === "RefreshAccessTokenError" && (
             <p className="rounded-lg bg-red-950/40 px-3 py-2 text-sm text-red-400">
               Token refresh failed. Please sign in again.

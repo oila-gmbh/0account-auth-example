@@ -1,7 +1,5 @@
 import NextAuth from 'next-auth';
 
-const authSecret = process.env.AUTH_SECRET ?? '';
-console.log('[AUTH DEBUG] AUTH_SECRET length:', authSecret.length, '| starts with:', authSecret.slice(0, 12));
 async function refreshAccessToken(token: Record<string, unknown>) {
   const response = await fetch('https://v1.0account.com/oauth/token', {
     method: 'POST',
@@ -21,6 +19,9 @@ async function refreshAccessToken(token: Record<string, unknown>) {
     expiresAt: Math.floor(Date.now() / 1000) + (tokens.expires_in as number),
     // Use the new refresh token if the server rotated it
     refreshToken: (tokens.refresh_token as string) ?? token.refreshToken,
+    // Keep the newest ID token: it is the id_token_hint that logout needs, and
+    // the old one names a session that refreshing has moved on from.
+    idToken: (tokens.id_token as string) ?? token.idToken,
   };
 }
 
@@ -38,6 +39,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // offline_access requests a refresh token
       authorization: {
         params: { scope: 'openid profile email offline_access' },
+      },
+      // Required. Without it Auth.js applies its default mapping, which reads
+      // `name` — a claim we do not send, since userinfo returns given_name and
+      // family_name separately — and invents a UUID for the id rather than
+      // using our sub.
+      profile(profile) {
+        return {
+          id: profile.sub,
+          name: [profile.given_name, profile.family_name].filter(Boolean).join(' ') || null,
+          email: profile.email,
+          image: profile.picture,
+        };
       },
     },
   ],

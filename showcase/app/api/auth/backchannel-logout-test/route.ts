@@ -1,27 +1,33 @@
-import type { NextRequest } from "next/server"
-import { NextResponse } from "next/server"
-import { auth } from "@/auth"
-import { revokedSubs } from "@/app/lib/revokedSubs"
+import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
+import { auth } from '@/auth';
+import { revokeSession } from '@/app/lib/revokedSessions';
+import { record } from '@/app/lib/debugLog';
 
 /**
  * GET /api/auth/backchannel-logout-test
  *
- * Simulates what happens when the user ends this session from their phone.
+ * Fakes the effect of 0account calling the back-channel logout URI, so the
+ * consequence can be seen without a second device — and, more usefully, on
+ * localhost, which a real logout token can never reach.
  *
- * In production 0account POSTs a signed logout token to
- * /api/auth/backchannel-logout. This endpoint fakes the effect of that call
- * locally, so the demo can show the consequence without a second device: it
- * marks the current subject revoked, and the poller notices within seconds.
+ * It marks this session revoked exactly as the real handler would. What it does
+ * not do is prove the real path works: that needs a public URL registered as
+ * the app's backchannel logout URI.
  */
 export async function GET(req: NextRequest) {
-  const session = await auth()
+  const session = await auth();
 
-  if (!session?.user?.id) {
-    return NextResponse.redirect(new URL("/signin", req.nextUrl.origin))
+  if (!session) {
+    return NextResponse.redirect(new URL('/signin', req.nextUrl.origin));
+  }
+  if (!session.sid) {
+    record('error', 'backchannel-logout-test', 'this session has no sid, so there is nothing to revoke');
+    return NextResponse.redirect(new URL('/profile', req.nextUrl.origin));
   }
 
-  revokedSubs.add(session.user.id)
-  console.log("[backchannel-logout-test] simulated revocation for sub=%s", session.user.id)
+  revokeSession(session.sid);
+  record('info', 'backchannel-logout-test', `simulated a logout token for sid=${session.sid}`);
 
-  return NextResponse.redirect(new URL("/profile", req.nextUrl.origin))
+  return NextResponse.redirect(new URL('/profile', req.nextUrl.origin));
 }

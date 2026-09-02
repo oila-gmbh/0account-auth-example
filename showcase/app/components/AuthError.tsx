@@ -47,6 +47,17 @@ const MESSAGES: Record<string, { title: string; detail: string }> = {
     title: 'That link is no longer valid',
     detail: 'It expired or had already been used. Start again.',
   },
+  // Not Auth.js codes — ours, set when the poller notices the session is over.
+  SessionEndedElsewhere: {
+    title: 'This session was ended somewhere else',
+    detail:
+      'The session was terminated in the 0account app, and we were told about it ' +
+      'over back-channel logout. Signing in again starts a new one.',
+  },
+  SessionExpired: {
+    title: 'Your session expired',
+    detail: 'The refresh token could not be exchanged for a new access token. Sign in again.',
+  },
 };
 
 export default function AuthError() {

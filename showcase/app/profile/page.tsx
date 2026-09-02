@@ -1,10 +1,9 @@
 import { auth, signOut } from "@/auth"
-import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import SignOutButtons from "../components/SignOutButtons"
 import OidcSessionPoller from "../components/OidcSessionPoller"
 import ExternalProfile from "../components/ExternalProfile"
-import { revokedSubs } from "@/app/lib/revokedSubs"
+import { isSessionRevoked } from "@/app/lib/revokedSessions"
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
@@ -35,19 +34,20 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
   }
 
   // Showcase-native flow (Auth.js OIDC)
-  const [session, cookieStore] = await Promise.all([auth(), cookies()])
-
+  const session = await auth()
 
   if (!session) redirect("/signin")
 
-
-  if (session?.user?.id && revokedSubs.has(session.user.id)) {
+  // Caught on load as well as by the poller, so a session that ended while this
+  // tab was in the background is gone by the time it is looked at again.
+  if (isSessionRevoked(session.sid)) {
     redirect("/api/auth/oidc-logout")
   }
 
   const userName = session?.user?.name ?? "—"
   const email = session?.user?.email ?? "—"
   const userId = session?.user?.id ?? "—"
+  const sid = session.sid ?? "—"
 
   const integration = { name: "Auth.js", language: "Next.js", flow: "oidc", library: "next-auth" }
 
@@ -76,6 +76,9 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
         {/* Session info */}
         <div className="mb-4 space-y-2">
           <InfoRow label="User ID" value={userId} />
+          {/* Shown because it is the thing a logout token names — if this is a
+              dash, a logout from the phone has nothing to match against. */}
+          <InfoRow label="Session (sid)" value={sid} />
           {session?.error === "RefreshAccessTokenError" && (
             <p className="rounded-lg bg-red-950/40 px-3 py-2 text-sm text-red-400">
               Token refresh failed. Please sign in again.

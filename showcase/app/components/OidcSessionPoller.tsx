@@ -20,7 +20,10 @@ export default function OidcSessionPoller() {
         const r = await fetch("/api/auth/status")
         if (r.status === 401) {
           clearInterval(t)
-          window.location.href = "/api/auth/oidc-logout"
+          // Carry the reason through, so the sign-in page can say whether the
+          // session was ended elsewhere or simply expired.
+          const { error } = await r.json().catch(() => ({ error: "" }))
+          window.location.href = `/api/auth/oidc-logout?reason=${encodeURIComponent(error ?? "")}`
         }
       } catch {
         // network error — retry next tick

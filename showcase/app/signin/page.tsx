@@ -165,8 +165,13 @@ function SignInContent() {
               lang="Next.js"
               flow="oidc"
               onClick={() => signIn('0account', { callbackUrl: '/profile' })}
+              // Auth.js builds its callback path from the provider id, so this
+              // is /api/auth/callback/0account rather than the /auth/callback
+              // the hand-rolled examples use. Registering the wrong one is the
+              // most common way a first integration fails.
               debugUrls={{
-                'Callback URI': `${appUrl}/auth/callback`,
+                'Callback URI': `${appUrl}/api/auth/callback/0account`,
+                'Backchannel logout': `${appUrl}/api/auth/backchannel-logout`,
                 'Sign-out URI': `${appUrl}/api/auth/signout`,
               }}
             />

@@ -11,8 +11,6 @@ services:
       context: ./showcase
       # NEXT_PUBLIC_* vars are inlined at build time — pass them as build args.
       args:
-        NEXT_PUBLIC_CLIENT_ID: ${NEXT_PUBLIC_CLIENT_ID}
-        NEXT_PUBLIC_REDIRECT_URI: ${NEXT_PUBLIC_REDIRECT_URI:-http://localhost:3000/auth/callback}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
         NEXT_PUBLIC_PASSPORT_URL: ${NEXT_PUBLIC_PASSPORT_URL:-http://localhost:8081}
         NEXT_PUBLIC_OPENID_CLIENT_URL: ${NEXT_PUBLIC_OPENID_CLIENT_URL:-http://localhost:8082}
@@ -39,7 +37,6 @@ services:
     ports:
       - '8081:3000'
     environment:
-      ZERO_CLIENT_ID: ${NEXT_PUBLIC_CLIENT_ID}
       ZERO_CLIENT_SECRET: ${ZERO_CLIENT_SECRET}
       SESSION_SECRET: ${SESSION_SECRET}
       REDIRECT_URI: ${PASSPORT_REDIRECT_URI:-http://localhost:8081/auth/callback}
@@ -53,7 +50,6 @@ services:
     ports:
       - '8082:3000'
     environment:
-      ZERO_CLIENT_ID: ${NEXT_PUBLIC_CLIENT_ID}
       ZERO_CLIENT_SECRET: ${ZERO_CLIENT_SECRET}
       SESSION_SECRET: ${SESSION_SECRET}
       REDIRECT_URI: ${OPENID_CLIENT_REDIRECT_URI:-http://localhost:8082/auth/callback}
@@ -67,7 +63,6 @@ services:
     ports:
       - '8083:8080'
     environment:
-      ZERO_CLIENT_ID: ${NEXT_PUBLIC_CLIENT_ID}
       ZERO_CLIENT_SECRET: ${ZERO_CLIENT_SECRET}
       SESSION_SECRET: ${SESSION_SECRET}
       REDIRECT_URI: ${GO_OIDC_REDIRECT_URI:-http://localhost:8083/auth/callback}
@@ -81,7 +76,6 @@ services:
     ports:
       - '8084:8080'
     environment:
-      ZERO_CLIENT_ID: ${NEXT_PUBLIC_CLIENT_ID}
       ZERO_CLIENT_SECRET: ${ZERO_CLIENT_SECRET}
       SESSION_SECRET: ${SESSION_SECRET}
       REDIRECT_URI: ${GO_GOTH_REDIRECT_URI:-http://localhost:8084/auth/callback}

@@ -9,7 +9,7 @@ async function refreshAccessToken(token: Record<string, unknown>) {
     body: new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: token.refreshToken as string,
-      client_id: process.env.NEXT_PUBLIC_CLIENT_ID!,
+      client_id: process.env.ZERO_CLIENT_ID!,
       client_secret: process.env.ZERO_CLIENT_SECRET!,
     }),
   });
@@ -31,7 +31,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       name: '0account',
       type: 'oidc',
       issuer: 'https://v1.0account.com',
-      clientId: process.env.NEXT_PUBLIC_CLIENT_ID,
+      clientId: process.env.ZERO_CLIENT_ID,
       clientSecret: process.env.ZERO_CLIENT_SECRET,
       // 0account requires credentials in the POST body, not Basic auth header
       client: { token_endpoint_auth_method: 'client_secret_post' },

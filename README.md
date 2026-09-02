@@ -66,8 +66,7 @@ npm run dev
 | `ZERO_CLIENT_SECRET` | OAuth client secret |
 | `SESSION_SECRET` | Random string for signing session cookies |
 | `AUTH_SECRET` | Auth.js secret — generate with `npx auth secret` (showcase only) |
-| `NEXT_PUBLIC_APP_ID` | Same as `ZERO_CLIENT_ID` — used by `<zero-account>` element (showcase only) |
-| `NEXT_PUBLIC_REDIRECT_URI` | Registered redirect URI (showcase only) |
+| `AUTH_URL` | Base URL Auth.js builds its callback from (showcase only) |
 
 ## Examples at a glance
 
@@ -81,10 +80,33 @@ npm run dev
 
 ## 0account dashboard setup
 
-For each example register:
+**Register every redirect URI you intend to use.** `/oauth/authorize` matches
+what the library sends against this list, and an unregistered URI is rejected —
+which is the most common reason an example fails at the callback rather than at
+sign-in.
 
-- **Redirect URI**: matching the port/path of the example (see READMEs)
-- **Back-channel logout URI** (optional): `<base>/auth/backchannel-logout`
+They are not the same shape. Auth.js derives its own path from the provider id;
+the other four use a path they set themselves:
+
+| Example | Redirect URI to register |
+|---|---|
+| `showcase/` | `http://localhost:3000/api/auth/callback/0account` |
+| `nodejs/passport/` | `http://localhost:3000/auth/callback` |
+| `nodejs/openid-client/` | `http://localhost:3000/auth/callback` |
+| `go/goth/` | `http://localhost:8080/auth/callback` |
+| `go/go-oidc/` | `http://localhost:8080/auth/callback` |
+
+Under Docker Compose the backends are published on different ports, so register
+those too if you run them that way: passport `8081`, openid-client `8082`,
+go-oidc `8083`, goth `8084` — each with `/auth/callback`.
+
+One app can hold all of them. There is no need for an app per example.
+
+**Back-channel logout URI** (optional): `<base>/api/auth/backchannel-logout` for
+the showcase. It only works against a publicly reachable URL, because 0account
+POSTs to it — a tunnel is required for local testing, and nothing else here
+needs one. Ordinary sign-in works on `localhost` because the browser does the
+redirecting, not us.
 
 ## API reference
 
